@@ -1,172 +1,162 @@
 <!DOCTYPE html>
-<html lang="fa">
+<html lang="fa" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<title>سامانه محاسبه مسیر حمل‌ونقل</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>سامانه محاسبه مسیر و مسافت حمل‌ونقل</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-<!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Neshan Map -->
+  <link href="https://static.neshan.org/sdk/leaflet/1.4.0/leaflet.css" rel="stylesheet" />
+  <script src="https://static.neshan.org/sdk/leaflet/1.4.0/leaflet.js"></script>
 
-<style>
-body{
-  margin:0;
-  font-family:tahoma;
-  background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-  color:#fff;
-}
-header{
-  padding:15px;
-  text-align:center;
-  font-size:20px;
-  font-weight:bold;
-}
-.container{
-  display:grid;
-  grid-template-columns:320px 1fr;
-  height:calc(100vh - 60px);
-}
-.panel{
-  padding:15px;
-  background:rgba(0,0,0,0.35);
-}
-input,select,button{
-  width:100%;
-  padding:8px;
-  margin-top:8px;
-  border-radius:6px;
-  border:none;
-}
-button{
-  background:#00c6ff;
-  color:#000;
-  font-weight:bold;
-  cursor:pointer;
-}
-#map{
-  height:100%;
-}
-table{
-  width:100%;
-  margin-top:10px;
-  border-collapse:collapse;
-  font-size:13px;
-}
-th,td{
-  border:1px solid #aaa;
-  padding:5px;
-  text-align:center;
-}
-</style>
+  <style>
+    body {
+      margin: 0;
+      font-family: Tahoma, sans-serif;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: #fff;
+    }
+    header {
+      text-align: center;
+      padding: 15px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      height: calc(100vh - 60px);
+    }
+    .panel {
+      background: rgba(0,0,0,0.4);
+      padding: 15px;
+    }
+    label { font-size: 13px; }
+    input, select, button {
+      width: 100%;
+      margin-top: 6px;
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+    }
+    button {
+      background: linear-gradient(to right, #0072ff, #00c6ff);
+      color: #fff;
+      cursor: pointer;
+    }
+    #map { height: 100%; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    th, td {
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 6px;
+      text-align: center;
+    }
+    th { background: rgba(0,0,0,0.4); }
+  </style>
 </head>
-
 <body>
 
 <header>🚚 سامانه محاسبه مسیر و مسافت حمل‌ونقل</header>
 
 <div class="container">
+  <div class="panel">
+    <label>مختصات مبدا (lat,lng)</label>
+    <input id="start" placeholder="مثال: 35.6892,51.3890" />
 
-<div class="panel">
-  <b>مبدا (lat,lng)</b>
-  <input id="start" placeholder="35.750262,51.479961">
+    <label>مختصات مقصد (lat,lng)</label>
+    <input id="end" placeholder="مثال: 35.6280,51.3912" />
 
-  <b>مقصد (lat,lng)</b>
-  <input id="end" placeholder="35.670586,51.296191">
+    <label>نوع ناوگان</label>
+    <select id="vehicle">
+      <option value="car">🚗 سواری</option>
+      <option value="truck">🚛 کامیون</option>
+    </select>
 
-  <b>نوع ناوگان</b>
-  <select id="vehicle">
-    <option value="driving">🚗 سواری</option>
-    <option value="driving">🚛 کامیون</option>
-  </select>
+    <button onclick="calculateRoute()">محاسبه مسیر</button>
 
-  <button onclick="calculate()">محاسبه مسیر</button>
-
-  <div style="font-size:12px;margin-top:8px">
-    📍 کلیک اول روی نقشه = مبدا  
-    <br>📍 کلیک دوم = مقصد
+    <div id="results"></div>
+    <p style="font-size:12px;opacity:.8">کلیک اول روی نقشه = مبدا | کلیک دوم = مقصد</p>
   </div>
 
-  <table id="resultTable" style="display:none">
-    <tr>
-      <th>مسیر</th>
-      <th>فاصله (km)</th>
-      <th>رفت‌وبرگشت</th>
-    </tr>
-  </table>
-</div>
-
-<div id="map"></div>
-
+  <div id="map"></div>
 </div>
 
 <script>
-const map = L.map('map').setView([32.5,53.5],5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+  const API_KEY = "service.2b2bc79d99084f40be64ee8e482a45ef"; // ← کلید نشان
 
-let points=[];
-let lines=[];
+  const map = L.map('map').setView([35.6892, 51.3890], 10);
+  L.tileLayer('https://tile.neshan.org/style/neshan/{z}/{x}/{y}.png', {
+    attribution: '© Neshan'
+  }).addTo(map);
 
-map.on('click',e=>{
-  if(points.length===2){
-    points=[];
-    lines.forEach(l=>map.removeLayer(l));
-    lines=[];
-  }
-  points.push(e.latlng);
-  L.marker(e.latlng).addTo(map);
+  let markers = [];
+  let clickCount = 0;
 
-  if(points.length===1)
-    start.value=`${e.latlng.lat},${e.latlng.lng}`;
-  if(points.length===2)
-    end.value=`${e.latlng.lat},${e.latlng.lng}`;
-});
+  map.on('click', e => {
+    if (markers.length === 2) {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+    }
+    const m = L.marker(e.latlng).addTo(map);
+    markers.push(m);
 
-function calculate(){
-  const s=start.value.split(',');
-  const e=end.value.split(',');
-  if(s.length!==2||e.length!==2){
-    alert("مختصات صحیح وارد کن");
-    return;
-  }
+    const coord = `${e.latlng.lat},${e.latlng.lng}`;
+    if (clickCount === 0) {
+      start.value = coord;
+      clickCount = 1;
+    } else {
+      end.value = coord;
+      clickCount = 0;
+    }
+  });
 
-  const url=`https://router.project-osrm.org/route/v1/driving/${s[1]},${s[0]};${e[1]},${e[0]}?alternatives=true&overview=full&geometries=geojson`;
+  async function calculateRoute() {
+    const s = start.value.trim();
+    const e = end.value.trim();
+    const vehicle = vehicleSelect = document.getElementById('vehicle').value;
 
-  fetch(url)
-  .then(r=>r.json())
-  .then(data=>{
-    lines.forEach(l=>map.removeLayer(l));
-    lines=[];
-    const table=document.getElementById("resultTable");
-    table.style.display="table";
-    table.innerHTML="<tr><th>مسیر</th><th>فاصله (km)</th><th>رفت‌وبرگشت</th></tr>";
+    if (!s || !e) {
+      alert('مبدا و مقصد را وارد یا روی نقشه انتخاب کن');
+      return;
+    }
 
-    let sum=0;
-    data.routes.forEach((r,i)=>{
-      const km=(r.distance/1000).toFixed(2);
-      sum+=parseFloat(km);
+    const [sLat, sLng] = s.split(',');
+    const [eLat, eLng] = e.split(',');
 
-      const poly=L.geoJSON(r.geometry,{
-        style:{color:i==0?'cyan':i==1?'yellow':'orange',weight:4}
-      }).addTo(map);
-      lines.push(poly);
+    const url = `https://api.neshan.org/v4/direction?origin=${sLat},${sLng}&destination=${eLat},${eLng}&vehicle=${vehicle}&alternatives=true`;
 
-      table.innerHTML+=`
-        <tr>
-          <td>${i+1}</td>
-          <td>${km}</td>
-          <td>${(km*2).toFixed(2)}</td>
-        </tr>`;
+    const res = await fetch(url, {
+      headers: { 'Api-Key': API_KEY }
     });
 
-    table.innerHTML+=`
-      <tr>
-        <th>میانگین</th>
-        <th>${(sum/data.routes.length).toFixed(2)}</th>
-        <th>${((sum/data.routes.length)*2).toFixed(2)}</th>
-      </tr>`;
-  });
-}
+    const data = await res.json();
+    renderResults(data.routes);
+  }
+
+  function renderResults(routes) {
+    let sum = 0;
+    let html = `<table><tr><th>مسیر</th><th>فاصله (km)</th></tr>`;
+
+    routes.forEach((r, i) => {
+      const km = (r.distance / 1000).toFixed(2);
+      sum += Number(km);
+      html += `<tr><td>${i+1}</td><td>${km}</td></tr>`;
+    });
+
+    const avg = (sum / routes.length).toFixed(2);
+    html += `<tr><th>میانگین</th><th>${avg}</th></tr>`;
+    html += `<tr><th>رفت و برگشت</th><th>${(avg*2).toFixed(2)}</th></tr>`;
+    html += `</table>`;
+
+    document.getElementById('results').innerHTML = html;
+  }
 </script>
 
 </body>
