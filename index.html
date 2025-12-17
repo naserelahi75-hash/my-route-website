@@ -1,58 +1,62 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-    <meta charset="UTF-8">
-    <title>محاسبه مسیر کامیون</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {
-            font-family: Tahoma, sans-serif;
-            direction: rtl;
-            background: #f5f5f5;
-            padding: 20px;
-        }
-        .box {
-            background: white;
-            padding: 20px;
-            max-width: 600px;
-            margin: auto;
-            border-radius: 8px;
-        }
-        input, button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        button {
-            background: #0077ff;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        .result {
-            margin-top: 20px;
-            font-weight: bold;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>محاسبه فاصله کیلومتری</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Tahoma, sans-serif;
+      direction: rtl;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+    .box {
+      background: white;
+      padding: 20px;
+      max-width: 500px;
+      margin: auto;
+      border-radius: 8px;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    button {
+      background: #0077ff;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .result {
+      margin-top: 15px;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
 
 <div class="box">
-    <h2>محاسبه میانگین مسیر (کامیون خاور)</h2>
+  <h3>محاسبه فاصله بین دو موقعیت (کیلومتر)</h3>
 
-    <label>مبدا (lat,lng)</label>
-    <input id="start" value="35.7502627049869,51.47996117059361">
+  <input id="lat1" placeholder="عرض جغرافیایی مبدا">
+  <input id="lon1" placeholder="طول جغرافیایی مبدا">
 
-    <label>مقصد (lat,lng)</label>
-    <input id="end" value="35.67058669126419,51.29619187580553">
+  <input id="lat2" placeholder="عرض جغرافیایی مقصد">
+  <input id="lon2" placeholder="طول جغرافیایی مقصد">
 
-    <button onclick="alert('مرحله بعدی: اتصال به نقشه')">
-        محاسبه مسیر
-    </button>
+  <button onclick="calcDistance()">محاسبه فاصله</button>
 
-    <div class="result" id="result"></div>
+  <div class="result" id="result"></div>
 </div>
 
-</body>
-</html>
+<script>
+function calcDistance() {
+  const lat1 = parseFloat(document.getElementById("lat1").value);
+  const lon1 = parseFloat(document.getElementById("lon1").value);
+  const lat2 = parseFloat(document.getElementById("lat2").value);
+  const lon2 = parseFloat(document.getElementById("lon2").value);
+
+  const R = 6371; // شعاع زمین (کیلومت
