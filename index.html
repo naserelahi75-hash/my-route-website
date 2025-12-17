@@ -2,21 +2,23 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
-<title>naser.ir | مسیریابی واقعی کامیون</title>
+<title>naser.ir | مسیریابی کامیون</title>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-body{margin:0;font-family:tahoma;background:#0b1220;color:#fff}
-#login,#app{display:none;height:100vh}
-#login{display:flex;align-items:center;justify-content:center}
-.box{background:#111a2e;padding:30px;border-radius:10px;width:300px}
-input,button{width:100%;padding:10px;margin-top:10px;border:none;border-radius:5px}
+html,body{margin:0;height:100%;font-family:tahoma}
+#login,#app{height:100%;display:none}
+#login{display:flex;align-items:center;justify-content:center;background:#0f172a}
+#loginBox{background:#020617;padding:30px;width:300px;border-radius:10px;color:#fff}
+input,button{width:100%;padding:10px;margin-top:10px;border-radius:5px;border:none}
 button{background:#2563eb;color:#fff;cursor:pointer}
+
 #app{display:flex}
-#panel{width:340px;padding:15px;background:#0f172a;overflow:auto}
+#sidebar{width:320px;background:#020617;color:#fff;padding:12px}
 #map{flex:1}
+
 .store{padding:8px;border-bottom:1px solid #333;cursor:pointer}
 .store:hover{background:#1e293b}
 </style>
@@ -26,124 +28,131 @@ button{background:#2563eb;color:#fff;cursor:pointer}
 
 <!-- LOGIN -->
 <div id="login">
- <div class="box">
-  <h3 style="text-align:center">naser.ir</h3>
-  <input id="user" placeholder="نام کاربری">
-  <input id="pass" type="password" placeholder="رمز عبور">
-  <button onclick="login()">ورود</button>
+ <div id="loginBox">
+  <h3>naser.ir</h3>
+  <input id="u" placeholder="user">
+  <input id="p" type="password" placeholder="password">
+  <button onclick="doLogin()">ورود</button>
  </div>
 </div>
 
 <!-- APP -->
 <div id="app">
- <div id="panel">
-  <h3>📍 انتخاب انبار (کلیک روی نقشه)</h3>
-  <div id="whText">انتخاب نشده</div>
+ <div id="sidebar">
+  <h4>📍 انتخاب انبار</h4>
+  <div id="wh">روی نقشه کلیک کن</div>
 
   <hr>
 
-  <h3>🔎 جستجوی فروشگاه (کد الزامی)</h3>
-  <input id="search" placeholder="کد فروشگاه">
+  <h4>🔎 جستجوی فروشگاه (کد)</h4>
+  <input id="search">
 
-  <div id="stores"></div>
+  <div id="list"></div>
  </div>
 
  <div id="map"></div>
 </div>
 
 <script>
-/* ================= CONFIG ================= */
-const CONFIG={
- neshanKey:"PUT_YOUR_NESHAN_API_KEY"
-};
+/* ================== تنظیمات ================== */
+const NESHAN_KEY = "YOUR_NESHAN_API_KEY";
 
-const USERS={ naser:"12345" };
+/* یوزر پسورد */
+const USER="naser", PASS="12345";
 
-/* ================= LOGIN ================= */
-if(localStorage.getItem("login")==="ok"){
- document.getElementById("login").style.display="none";
- document.getElementById("app").style.display="flex";
- init();
-}else{
- document.getElementById("login").style.display="flex";
-}
-
-function login(){
- const u=user.value,p=pass.value;
- if(USERS[u]===p){
-  localStorage.setItem("login","ok");
-  location.reload();
- }else alert("یوزر یا پسورد اشتباه است");
-}
-
-document.addEventListener("keydown",e=>{
- if(e.key==="Enter" && login.style.display==="flex") login();
-});
-
-/* ================= DATA (STATIC) ================= */
+/* داده فروشگاه‌ها (ثابت – یک‌جا) */
 const STORES=[
  {code:"1008",city:"تهران",manager:"احمدی",lat:35.72,lng:51.42},
  {code:"1010",city:"کرج",manager:"محمدی",lat:35.83,lng:50.97},
  {code:"1020",city:"قم",manager:"رضایی",lat:34.64,lng:50.88}
 ];
 
-/* ================= MAP ================= */
-let map,warehouse,whMarker,routeLine;
+/* ================== LOGIN ================== */
+if(localStorage.getItem("login")==="ok"){
+ showApp();
+}else{
+ login.style.display="flex";
+}
 
-function init(){
- map=L.map("map").setView([35.7,51.4],8);
- L.tileLayer("https://static.neshan.org/sdk/leaflet/v1/tiles/default/{z}/{x}/{y}.png",{
-  maxZoom:18
- }).addTo(map);
+function doLogin(){
+ if(u.value===USER && p.value===PASS){
+  localStorage.setItem("login","ok");
+  showApp();
+ }else alert("اطلاعات اشتباه است");
+}
+
+document.addEventListener("keydown",e=>{
+ if(e.key==="Enter" && login.style.display==="flex") doLogin();
+});
+
+function showApp(){
+ login.style.display="none";
+ app.style.display="flex";
+ initMap();
+}
+
+/* ================== MAP ================== */
+let map,warehouseMarker,warehouse,routeLine;
+
+function initMap(){
+ map=L.map("map").setView([35.7,51.4],7);
+
+ L.tileLayer(
+  "https://static.neshan.org/sdk/leaflet/v1/tiles/default/{z}/{x}/{y}.png",
+  {maxZoom:18}
+ ).addTo(map);
 
  map.on("click",e=>{
   warehouse=e.latlng;
-  if(whMarker) map.removeLayer(whMarker);
-  whMarker=L.marker(e.latlng).addTo(map).bindPopup("انبار").openPopup();
-  whText.innerText=`${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
+  if(warehouseMarker) map.removeLayer(warehouseMarker);
+  warehouseMarker=L.marker(e.latlng).addTo(map).bindPopup("انبار").openPopup();
+  wh.innerText=`${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
  });
 
  renderStores();
  search.oninput=renderStores;
 }
 
-/* ================= STORES ================= */
+/* ================== STORES ================== */
 function renderStores(){
- stores.innerHTML="";
+ list.innerHTML="";
  const q=search.value.trim();
- STORES.filter(s=>!q||s.code.includes(q)).forEach(s=>{
+ STORES.filter(s=>!q || s.code.includes(q)).forEach(s=>{
   const d=document.createElement("div");
   d.className="store";
   d.innerText=`${s.code} | ${s.city} | ${s.manager}`;
-  d.onclick=()=>showStore(s);
-  stores.appendChild(d);
+  d.onclick=()=>selectStore(s);
+  list.appendChild(d);
  });
 }
 
-function showStore(s){
- if(!warehouse){ alert("اول انبار را انتخاب کن"); return; }
+function selectStore(s){
+ if(!warehouse){alert("اول انبار را انتخاب کن");return;}
 
- const marker=L.marker([s.lat,s.lng]).addTo(map);
+ const m=L.marker([s.lat,s.lng]).addTo(map);
  map.setView([s.lat,s.lng],12);
 
  const url=`https://api.neshan.org/v4/direction?origin=${warehouse.lat},${warehouse.lng}&destination=${s.lat},${s.lng}&vehicle=truck`;
 
- fetch(url,{headers:{"Api-Key":CONFIG.neshanKey}})
+ fetch(url,{headers:{"Api-Key":NESHAN_KEY}})
  .then(r=>r.json())
  .then(d=>{
   const leg=d.routes[0].legs[0];
   const km=(leg.distance.value/1000)*2;
 
-  marker.bindPopup(`
+  m.bindPopup(`
    <b>کد:</b> ${s.code}<br>
    <b>شهر:</b> ${s.city}<br>
    <b>مسئول:</b> ${s.manager}<br>
    <b>رفت و برگشت:</b> ${km.toFixed(1)} km<br>
-   <b>بهینه‌ترین مسیر:</b> کوتاه‌ترین مسیر جاده‌ای
+   <b>مسیر:</b> کوتاه‌ترین مسیر
   `).openPopup();
 
   if(routeLine) map.removeLayer(routeLine);
-  routeLine=L.polyline(leg.steps.flatMap(st=>st.polyline),{weight:5}).addTo(map);
+  routeLine=L.polyline(
+   leg.steps.flatMap(st=>st.polyline),
+   {color:"blue",weight:5}
+  ).addTo(map);
  });
 }
 </script>
