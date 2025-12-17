@@ -1,199 +1,118 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-  <meta charset="UTF-8" />
-  <title>سامانه حرفه‌ای مسیریابی کامیون</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<title>مسیریابی کامیون</title>
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
-  <style>
-    body {
-      margin: 0;
-      font-family: Tahoma, sans-serif;
-      background: linear-gradient(135deg, #0b1f2a, #123344);
-      color: #fff;
-    }
+<style>
+  body { margin:0; font-family:tahoma; }
+  #map { height:100vh; width:100%; }
 
-    header {
-      padding: 15px 20px;
-      font-size: 20px;
-      font-weight: bold;
-      background: rgba(0,0,0,0.3);
-    }
+  .panel {
+    position:absolute;
+    top:20px;
+    left:20px;
+    background:#111827;
+    color:#fff;
+    padding:15px;
+    border-radius:12px;
+    width:280px;
+    z-index:1000;
+  }
 
-    .container {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      height: calc(100vh - 60px);
-    }
+  input, button {
+    width:100%;
+    margin-top:8px;
+    padding:8px;
+    border-radius:6px;
+    border:none;
+  }
 
-    .panel {
-      background: rgba(255,255,255,0.08);
-      padding: 15px;
-      overflow-y: auto;
-    }
-
-    h3 {
-      margin-top: 0;
-      font-size: 15px;
-      border-bottom: 1px solid rgba(255,255,255,0.2);
-      padding-bottom: 8px;
-    }
-
-    label {
-      font-size: 12px;
-      opacity: 0.85;
-    }
-
-    input, select {
-      width: 100%;
-      margin: 6px 0 12px;
-      padding: 8px;
-      border-radius: 6px;
-      border: none;
-      font-size: 13px;
-    }
-
-    button {
-      width: 100%;
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      background: linear-gradient(to right, #ff9800, #ff5722);
-      color: #fff;
-      font-size: 14px;
-      cursor: pointer;
-    }
-
-    table {
-      width: 100%;
-      margin-top: 15px;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    th, td {
-      border: 1px solid rgba(255,255,255,0.2);
-      padding: 6px;
-      text-align: center;
-    }
-
-    th {
-      background: rgba(0,0,0,0.3);
-    }
-
-    #map {
-      width: 100%;
-      height: 100%;
-    }
-  </style>
+  button {
+    background:#2563eb;
+    color:#fff;
+    cursor:pointer;
+  }
+</style>
 </head>
 <body>
 
-<header>🚛 سامانه بهینه‌یابی مسیر کامیون (حرفه‌ای)</header>
+<div class="panel">
+  <div>مبدا (lat,lng)</div>
+  <input id="origin" placeholder="35.6892,51.3890">
 
-<div class="container">
+  <div>مقصد (lat,lng)</div>
+  <input id="destination" placeholder="35.7503,51.4756">
 
-  <div class="panel">
-    <h3>اطلاعات مسیر</h3>
+  <button onclick="routeTruck()">محاسبه مسیر کامیون</button>
 
-    <label>مختصات مبدا (lat,lng)</label>
-    <input id="origin" placeholder="35.6892,51.3890" />
-
-    <label>مختصات مقصد (lat,lng)</label>
-    <input id="destination" placeholder="35.7200,51.4100" />
-
-    <h3>اطلاعات مقایسه‌ای سفر</h3>
-
-    <label>کد فروشگاه</label>
-    <input id="storeCode" />
-
-    <label>مسئول منطقه</label>
-    <input id="manager" />
-
-    <label>شهر</label>
-    <input id="city" />
-
-    <button onclick="calcTruckRoute()">محاسبه بهینه‌ترین مسیر کامیون</button>
-
-    <table id="resultTable" style="display:none">
-      <thead>
-        <tr>
-          <th>کد فروشگاه</th>
-          <th>شهر</th>
-          <th>مسئول</th>
-          <th>مسافت (km)</th>
-          <th>زمان (min)</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <div id="map"></div>
+  <small>کلیک اول: مبدا | کلیک دوم: مقصد</small>
 </div>
 
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
-  const API_KEY = "service.2b2bc79d99084f40be64ee8e482a45ef";
+const API_KEY = "service.2b2bc79d99084f40be64ee8e482a45ef";
 
-  const map = L.map('map').setView([35.6892, 51.3890], 11);
+const map = L.map('map').setView([35.6892,51.3890], 11);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19
+}).addTo(map);
+
+let markers = [];
+let routeLine = null;
+let clickCount = 0;
+
+map.on('click', e => {
+  const coord = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+
+  if (clickCount === 0) {
+    document.getElementById("origin").value = coord;
+  } else {
+    document.getElementById("destination").value = coord;
+  }
+
+  markers.push(L.marker(e.latlng).addTo(map));
+  clickCount = (clickCount + 1) % 2;
+});
+
+async function routeTruck() {
+  const origin = document.getElementById("origin").value;
+  const destination = document.getElementById("destination").value;
+
+  if (!origin || !destination) {
+    alert("مبدا و مقصد را مشخص کن");
+    return;
+  }
+
+  if (routeLine) map.removeLayer(routeLine);
+
+  const url = `https://api.neshan.org/v4/direction?type=truck&origin=${origin}&destination=${destination}`;
+
+  const res = await fetch(url, {
+    headers: {
+      "Api-Key": API_KEY
+    }
+  });
+
+  const data = await res.json();
+
+  const coords = data.routes[0].legs[0].steps.flatMap(s =>
+    s.polyline.map(p => [p[1], p[0]])
+  );
+
+  routeLine = L.polyline(coords, {
+    color: 'orange',
+    weight: 6
   }).addTo(map);
 
-  let routeLayer;
-
-  function calcTruckRoute() {
-    const [olat, olng] = origin.value.split(',').map(Number);
-    const [dlat, dlng] = destination.value.split(',').map(Number);
-
-    if (!olat || !dlat) {
-      alert('مختصات مبدا و مقصد را صحیح وارد کن');
-      return;
-    }
-
-    const url = `https://api.neshan.org/v4/direction?type=truck&origin=${olat},${olng}&destination=${dlat},${dlng}`;
-
-    fetch(url, {
-      headers: { 'Api-Key': API_KEY }
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (!data.routes) {
-        alert('مسیر پیدا نشد');
-        return;
-      }
-
-      const route = data.routes[0];
-      const coords = route.overview_polyline.points.map(p => [p[1], p[0]]);
-
-      if (routeLayer) map.removeLayer(routeLayer);
-
-      routeLayer = L.polyline(coords, { color: '#ff9800', weight: 5 }).addTo(map);
-      map.fitBounds(routeLayer.getBounds());
-
-      const distance = (route.distance / 1000).toFixed(1);
-      const duration = Math.round(route.duration / 60);
-
-      const tbody = document.querySelector('#resultTable tbody');
-      tbody.innerHTML = `
-        <tr>
-          <td>${storeCode.value}</td>
-          <td>${city.value}</td>
-          <td>${manager.value}</td>
-          <td>${distance}</td>
-          <td>${duration}</td>
-        </tr>
-      `;
-
-      document.getElementById('resultTable').style.display = 'table';
-    })
-    .catch(() => alert('خطا در ارتباط با API نشان'));
-  }
+  map.fitBounds(routeLine.getBounds());
+}
 </script>
 
 </body>
