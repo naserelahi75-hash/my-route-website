@@ -1,62 +1,177 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-  <meta charset="UTF-8">
-  <title>محاسبه فاصله کیلومتری</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <title>محاسبه مسیر روی نقشه</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     body {
+      margin: 0;
       font-family: Tahoma, sans-serif;
-      direction: rtl;
-      background: #f5f5f5;
-      padding: 20px;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: #fff;
     }
-    .box {
-      background: white;
+
+    header {
+      text-align: center;
       padding: 20px;
-      max-width: 500px;
-      margin: auto;
-      border-radius: 8px;
+      font-size: 22px;
+      font-weight: bold;
     }
-    input, button {
+
+    .container {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      height: calc(100vh - 80px);
+      gap: 15px;
+      padding: 15px;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 15px;
+    }
+
+    .panel h3 {
+      margin-top: 0;
+      font-size: 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.3);
+      padding-bottom: 8px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    input {
+      padding: 8px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+    }
+
+    button {
       width: 100%;
       padding: 10px;
+      border-radius: 8px;
+      border: none;
+      background: #00c6ff;
+      background: linear-gradient(to right, #0072ff, #00c6ff);
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #result {
       margin-top: 10px;
       font-size: 14px;
     }
-    button {
-      background: #0077ff;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    .result {
-      margin-top: 15px;
-      font-weight: bold;
+
+    #map {
+      border-radius: 12px;
     }
   </style>
 </head>
 <body>
 
-<div class="box">
-  <h3>محاسبه فاصله بین دو موقعیت (کیلومتر)</h3>
+<header>🗺️ محاسبه فاصله بین دو نقطه روی نقشه</header>
 
-  <input id="lat1" placeholder="عرض جغرافیایی مبدا">
-  <input id="lon1" placeholder="طول جغرافیایی مبدا">
+<div class="container">
+  <!-- Left Panel -->
+  <div class="panel">
+    <h3>مختصات مبدا و مقصد</h3>
 
-  <input id="lat2" placeholder="عرض جغرافیایی مقصد">
-  <input id="lon2" placeholder="طول جغرافیایی مقصد">
+    <strong>مبدا</strong>
+    <div class="row">
+      <input id="lat1" placeholder="عرض جغرافیایی" />
+      <input id="lon1" placeholder="طول جغرافیایی" />
+    </div>
 
-  <button onclick="calcDistance()">محاسبه فاصله</button>
+    <strong>مقصد</strong>
+    <div class="row">
+      <input id="lat2" placeholder="عرض جغرافیایی" />
+      <input id="lon2" placeholder="طول جغرافیایی" />
+    </div>
 
-  <div class="result" id="result"></div>
+    <button onclick="calcDistance()">محاسبه فاصله مستقیم</button>
+
+    <div id="result"></div>
+    <p style="font-size:12px;opacity:0.8;margin-top:10px">
+      💡 روی نقشه کلیک کن: کلیک اول = مبدا، کلیک دوم = مقصد
+    </p>
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
 </div>
 
 <script>
-function calcDistance() {
-  const lat1 = parseFloat(document.getElementById("lat1").value);
-  const lon1 = parseFloat(document.getElementById("lon1").value);
-  const lat2 = parseFloat(document.getElementById("lat2").value);
-  const lon2 = parseFloat(document.getElementById("lon2").value);
+  const map = L.map('map').setView([32.4279, 53.688], 5);
 
-  const R = 6371; // شعاع زمین (کیلومت
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  let markers = [];
+  let line;
+
+  map.on('click', function (e) {
+    if (markers.length === 2) {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      if (line) map.removeLayer(line);
+    }
+
+    const marker = L.marker(e.latlng).addTo(map);
+    markers.push(marker);
+
+    if (markers.length === 1) {
+      lat1.value = e.latlng.lat.toFixed(6);
+      lon1.value = e.latlng.lng.toFixed(6);
+    }
+
+    if (markers.length === 2) {
+      lat2.value = e.latlng.lat.toFixed(6);
+      lon2.value = e.latlng.lng.toFixed(6);
+
+      line = L.polyline([
+        markers[0].getLatLng(),
+        markers[1].getLatLng()
+      ], { color: 'cyan' }).addTo(map);
+    }
+  });
+
+  function calcDistance() {
+    const R = 6371;
+    const φ1 = lat1.value * Math.PI / 180;
+    const φ2 = lat2.value * Math.PI / 180;
+    const Δφ = (lat2.value - lat1.value) * Math.PI / 180;
+    const Δλ = (lon2.value - lon1.value) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) ** 2 +
+      Math.cos(φ1) * Math.cos(φ2) *
+      Math.sin(Δλ / 2) ** 2;
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const d = R * c;
+
+    result.innerHTML = `📏 فاصله مستقیم: <b>${d.toFixed(2)} کیلومتر</b>`;
+  }
+</script>
+
+</body>
+</html>
