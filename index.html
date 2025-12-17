@@ -2,7 +2,7 @@
 <html lang="fa">
 <head>
   <meta charset="UTF-8" />
-  <title>مسیریابی دقیق جاده‌ای</title>
+  <title>محاسبه مسیر دقیق جاده‌ای</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Leaflet -->
@@ -18,49 +18,48 @@
     }
     header {
       text-align: center;
-      padding: 16px;
-      font-size: 20px;
+      padding: 20px;
+      font-size: 22px;
       font-weight: bold;
     }
     .container {
       display: grid;
       grid-template-columns: 360px 1fr;
-      height: calc(100vh - 70px);
-      gap: 12px;
-      padding: 12px;
+      height: calc(100vh - 80px);
+      gap: 15px;
+      padding: 15px;
     }
     .panel {
-      background: rgba(255,255,255,0.12);
-      backdrop-filter: blur(12px);
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
       border-radius: 14px;
-      padding: 14px;
+      padding: 15px;
     }
-    .panel h3 {
-      margin: 0 0 10px;
-      font-size: 15px;
-      border-bottom: 1px solid rgba(255,255,255,0.3);
-      padding-bottom: 6px;
-    }
-    input {
-      width: 100%;
-      padding: 8px;
-      margin-bottom: 8px;
-      border-radius: 6px;
-      border: none;
+    label {
       font-size: 13px;
+      opacity: 0.9;
+    }
+    input, select {
+      width: 100%;
+      padding: 9px;
+      border-radius: 7px;
+      border: none;
+      margin-top: 5px;
+      margin-bottom: 12px;
+      font-size: 14px;
     }
     button {
       width: 100%;
-      padding: 10px;
+      padding: 11px;
       border-radius: 10px;
       border: none;
       background: linear-gradient(to right, #0072ff, #00c6ff);
       color: #fff;
-      font-size: 14px;
+      font-size: 15px;
       cursor: pointer;
     }
     #result {
-      margin-top: 10px;
+      margin-top: 12px;
       font-size: 14px;
     }
     #map {
@@ -70,21 +69,26 @@
 </head>
 <body>
 
-<header>🚗 مسیریابی دقیق جاده‌ای (OSRM)</header>
+<header>🗺️ محاسبه مسیر دقیق جاده‌ای (سواری / کامیون)</header>
 
 <div class="container">
   <div class="panel">
-    <h3>مختصات (lat,lng)</h3>
+    <label>مبدا (lat,lng)</label>
+    <input id="start" placeholder="مثال: 35.6892,51.3890" />
 
-    <input id="start" placeholder="مبدا: 35.6892,51.3890" />
-    <input id="end" placeholder="مقصد: 36.2605,59.6168" />
+    <label>مقصد (lat,lng)</label>
+    <input id="end" placeholder="مثال: 32.6539,51.6660" />
 
-    <button onclick="route()">محاسبه مسیر واقعی</button>
+    <label>نوع وسیله</label>
+    <select id="mode">
+      <option value="car">🚗 سواری</option>
+      <option value="truck">🚚 کامیون</option>
+    </select>
+
+    <button onclick="route()">محاسبه مسیر</button>
 
     <div id="result"></div>
-    <p style="font-size:12px;opacity:0.8">
-      🖱️ کلیک اول روی نقشه = مبدا | کلیک دوم = مقصد
-    </p>
+    <p style="font-size:12px;opacity:0.8">💡 کلیک اول روی نقشه = مبدا | کلیک دوم = مقصد</p>
   </div>
 
   <div id="map"></div>
@@ -97,43 +101,49 @@
     attribution: '© OpenStreetMap'
   }).addTo(map);
 
-  let points = [];
   let markers = [];
   let routeLine;
 
   map.on('click', e => {
-    if (points.length === 2) {
-      points = [];
+    if (markers.length === 2) {
       markers.forEach(m => map.removeLayer(m));
       markers = [];
       if (routeLine) map.removeLayer(routeLine);
     }
 
-    points.push(e.latlng);
-    markers.push(L.marker(e.latlng).addTo(map));
+    const m = L.marker(e.latlng).addTo(map);
+    markers.push(m);
 
-    if (points.length === 1) start.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
-    if (points.length === 2) end.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+    const value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+    if (markers.length === 1) start.value = value;
+    if (markers.length === 2) end.value = value;
   });
 
   async function route() {
-    const [lat1, lon1] = start.value.split(',').map(Number);
-    const [lat2, lon2] = end.value.split(',').map(Number);
+    const [lat1, lon1] = start.value.split(',');
+    const [lat2, lon2] = end.value.split(',');
+    const mode = document.getElementById('mode').value;
 
-    const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
+    const profile = mode === 'truck' ? 'driving' : 'driving';
+
+    const url = `https://router.project-osrm.org/route/v1/${profile}/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`;
 
     const res = await fetch(url);
     const data = await res.json();
 
-    const route = data.routes[0];
-    const km = (route.distance / 1000).toFixed(2);
-    const min = (route.duration / 60).toFixed(1);
+    if (!data.routes) {
+      result.innerHTML = '❌ خطا در محاسبه مسیر';
+      return;
+    }
 
-    result.innerHTML = `📏 فاصله جاده‌ای: <b>${km} km</b><br>⏱️ زمان تقریبی: <b>${min} دقیقه</b>`;
+    const routeData = data.routes[0];
+    const km = (routeData.distance / 1000).toFixed(2);
+    const min = (routeData.duration / 60).toFixed(0);
+
+    result.innerHTML = `📏 فاصله جاده‌ای: <b>${km} km</b><br>⏱ زمان تقریبی: <b>${min} دقیقه</b>`;
 
     if (routeLine) map.removeLayer(routeLine);
-
-    routeLine = L.geoJSON(route.geometry, {
+    routeLine = L.geoJSON(routeData.geometry, {
       style: { color: 'cyan', weight: 4 }
     }).addTo(map);
 
