@@ -7,16 +7,17 @@
 
 <link rel="stylesheet" href="https://static.neshan.org/sdk/leaflet/1.9.4/leaflet.css" />
 <script src="https://static.neshan.org/sdk/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 body{margin:0;font-family:tahoma;background:#0f172a;color:#e5e7eb}
 #loginBox,#app{height:100vh;display:flex;align-items:center;justify-content:center}
 .login-box{background:#020617;padding:30px;border-radius:12px;width:320px}
 .login-box input,.login-box button{width:100%;padding:10px;margin-top:10px;border-radius:6px;border:none}
-.login-box button{background:#2563eb;color:#fff;cursor:pointer}
+.login-box button{background:#2563eb;color:#fff}
 header{height:56px;background:#020617;display:flex;align-items:center;padding:0 20px;font-weight:bold}
 .container{display:flex;height:calc(100vh - 56px)}
-.sidebar{width:380px;background:#020617;padding:12px;overflow:auto}
+.sidebar{width:420px;background:#020617;padding:12px;overflow:auto}
 .sidebar h3{margin:10px 0}
 .sidebar input,.sidebar button{width:100%;padding:8px;margin:6px 0;border-radius:6px;border:none}
 .sidebar button{background:#2563eb;color:#fff}
@@ -43,18 +44,20 @@ th{background:#f1f5f9}
 
 <!-- APP -->
 <div id="app" style="display:none;flex-direction:column;width:100%">
-<header>🚚 naser.ir | سامانه مسیریابی کامیون</header>
+<header>🚚 naser.ir | مسیریابی واقعی کامیون</header>
 <div class="container">
 <aside class="sidebar">
+<h3>📁 فایل فروشگاه‌ها (ثابت سیستم)</h3>
+<input type="file" accept=".xlsx" onchange="loadExcel(this)">
+
 <h3>📍 انتخاب انبار</h3>
 <input id="warehouseSearch" placeholder="جستجوی آدرس انبار">
-<button onclick="searchWarehouse()">ثبت انبار روی نقشه</button>
+<button onclick="searchWarehouse()">ثبت انبار</button>
 
 <h3>🏪 فیلتر فروشگاه‌ها</h3>
-<input id="fCode" placeholder="کد فروشگاه">
-<input id="fCity" placeholder="شهر">
-<input id="fManager" placeholder="مسئول منطقه">
-<button onclick="renderStores()">اعمال فیلتر</button>
+<input id="fCode" placeholder="کد فروشگاه" oninput="renderStores()">
+<input id="fCity" placeholder="شهر" oninput="renderStores()">
+<input id="fManager" placeholder="مسئول منطقه" oninput="renderStores()">
 
 <h3>📋 فروشگاه‌ها</h3>
 <div class="list" id="storeList"></div>
@@ -64,7 +67,7 @@ th{background:#f1f5f9}
 </div>
 <div class="results">
 <table id="result">
-<tr><th>کد</th><th>شهر</th><th>رفت و برگشت (km)</th></tr>
+<tr><th>کد</th><th>شهر</th><th>مسئول</th><th>رفت و برگشت (km)</th></tr>
 </table>
 </div>
 </div>
@@ -73,39 +76,30 @@ th{background:#f1f5f9}
 /* ===== تنظیمات ===== */
 const LOGIN_CONFIG={user:"naser",pass:"12345"};
 const API_KEY="service.2b2bc79d99084f40be64ee8e482a45ef";
-
-/* ===== داده فروشگاه‌ها ===== */
-const STORES=[
- {code:1080,city:"تهران",manager:"منطقه 1",lat:35.732,lng:51.422},
- {code:1102,city:"کرج",manager:"البرز",lat:35.84,lng:50.97},
- {code:1205,city:"قم",manager:"مرکزی",lat:34.64,lng:50.88}
-];
-
+let STORES=[];
 let map,warehouseMarker,warehouse;
 
 function doLogin(){
- const u=document.getElementById('loginUser').value.trim();
- const p=document.getElementById('loginPass').value.trim();
+ const u=loginUser.value.trim();
+ const p=loginPass.value.trim();
  if(u===LOGIN_CONFIG.user && p===LOGIN_CONFIG.pass){
-   document.getElementById('loginBox').style.display='none';
-   document.getElementById('app').style.display='flex';
-   initMap();
+  loginBox.style.display='none';
+  app.style.display='flex';
+  initMap();
  } else alert('نام کاربری یا رمز عبور اشتباه است');
 }
 
 function initMap(){
  map=L.map('map',{key:API_KEY,center:[35.7,51.4],zoom:8});
  map.on('click',e=>{
-   if(warehouseMarker) map.removeLayer(warehouseMarker);
-   warehouse={lat:e.latlng.lat,lng:e.latlng.lng};
-   warehouseMarker=L.marker(e.latlng).addTo(map).bindPopup('انبار').openPopup();
+  if(warehouseMarker) map.removeLayer(warehouseMarker);
+  warehouse={lat:e.latlng.lat,lng:e.latlng.lng};
+  warehouseMarker=L.marker(e.latlng).addTo(map).bindPopup('انبار').openPopup();
  });
- renderStores();
 }
 
 async function searchWarehouse(){
- const q=warehouseSearch.value;
- const r=await fetch(`https://api.neshan.org/v1/search?term=${q}&lat=35.7&lng=51.4`,{headers:{'Api-Key':API_KEY}});
+ const r=await fetch(`https://api.neshan.org/v1/search?term=${warehouseSearch.value}&lat=35.7&lng=51.4`,{headers:{'Api-Key':API_KEY}});
  const d=await r.json();
  if(!d.items.length)return alert('یافت نشد');
  const loc=d.items[0].location;
@@ -115,9 +109,27 @@ async function searchWarehouse(){
  map.setView([loc.y,loc.x],13);
 }
 
+function loadExcel(input){
+ const reader=new FileReader();
+ reader.onload=e=>{
+  const wb=XLSX.read(e.target.result,{type:'binary'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const data=XLSX.utils.sheet_to_json(ws);
+  STORES=data.map(r=>({
+   code:r.code||r['کد'],
+   city:r.city||r['شهر'],
+   manager:r.manager||r['مسئول'],
+   lat:parseFloat(r.lat||r['lat']),
+   lng:parseFloat(r.lng||r['lng'])
+  }));
+  renderStores();
+ };
+ reader.readAsBinaryString(input.files[0]);
+}
+
 function renderStores(){
  storeList.innerHTML='';
- STORES.filter(s=>(!fCode.value||s.code==fCode.value)&&(!fCity.value||s.city.includes(fCity.value))&&(!fManager.value||s.manager.includes(fManager.value)))
+ STORES.filter(s=>(!fCode.value||s.code==fCode.value)&&(!fCity.value||s.city?.includes(fCity.value))&&(!fManager.value||s.manager?.includes(fManager.value)))
  .forEach(s=>{
   storeList.innerHTML+=`<div class="item"><label><input type="checkbox" value="${s.code}"> ${s.code} - ${s.city} - ${s.manager}</label></div>`;
  });
@@ -125,13 +137,13 @@ function renderStores(){
 
 async function calculateRoutes(){
  if(!warehouse)return alert('انبار انتخاب نشده');
- result.innerHTML='<tr><th>کد</th><th>شهر</th><th>رفت و برگشت (km)</th></tr>';
+ result.innerHTML='<tr><th>کد</th><th>شهر</th><th>مسئول</th><th>رفت و برگشت (km)</th></tr>';
  const selected=[...document.querySelectorAll('input[type=checkbox]:checked')].map(c=>STORES.find(s=>s.code==c.value));
  for(let s of selected){
   const r=await fetch(`https://api.neshan.org/v4/direction?type=truck&origin=${warehouse.lat},${warehouse.lng}&destination=${s.lat},${s.lng}`,{headers:{'Api-Key':API_KEY}});
   const d=await r.json();
   const km=(d.routes[0].legs[0].distance.value*2/1000).toFixed(1);
-  result.innerHTML+=`<tr><td>${s.code}</td><td>${s.city}</td><td>${km}</td></tr>`;
+  result.innerHTML+=`<tr><td>${s.code}</td><td>${s.city}</td><td>${s.manager}</td><td>${km}</td></tr>`;
  }
 }
 </script>
