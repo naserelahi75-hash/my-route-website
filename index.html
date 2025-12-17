@@ -2,205 +2,163 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
-<title>naser.ir | مسیریابی واقعی کامیون</title>
+<title>naser.ir | مسیریابی کامیون</title>
 
-<!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
 <style>
-body{
-  margin:0;
-  font-family:tahoma;
-  background:#0b1220;
-  color:#fff;
+body{margin:0;font-family:tahoma;background:#0b1220;color:#fff}
+#login,#app{height:100vh}
+#login{
+ display:flex;justify-content:center;align-items:center
 }
-
-/* LOGIN */
 #loginBox{
-  width:320px;
-  margin:150px auto;
-  background:#111827;
-  padding:20px;
-  border-radius:8px;
-  text-align:center;
+ width:320px;background:#111827;padding:20px;border-radius:8px
 }
-#loginBox input,#loginBox button{
-  width:100%;
-  padding:10px;
-  margin:6px 0;
-}
-
-/* APP */
-#app{
-  display:none;
-  height:100vh;
-}
-#sidebar{
-  width:380px;
-  background:#111827;
-  padding:10px;
-  overflow:auto;
-}
-#map{
-  flex:1;
-}
-
 input,button{
-  border-radius:4px;
-  border:none;
+ width:100%;padding:10px;margin:6px 0;border:none;border-radius:4px
 }
-button{
-  background:#2563eb;
-  color:#fff;
-  cursor:pointer;
+button{background:#2563eb;color:#fff;cursor:pointer}
+#app{display:none;flex-direction:row}
+#side{
+ width:360px;background:#111827;padding:10px;overflow:auto
 }
-
-table{
-  width:100%;
-  margin-top:10px;
-  border-collapse:collapse;
-  font-size:13px;
-}
-th,td{
-  border:1px solid #333;
-  padding:4px;
-  text-align:center;
-}
+#map{flex:1}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border:1px solid #333;padding:4px;text-align:center}
 </style>
 </head>
 <body>
 
 <!-- LOGIN -->
-<div id="loginBox">
-  <h3>ورود به naser.ir</h3>
-  <input id="user" placeholder="نام کاربری">
-  <input id="pass" type="password" placeholder="رمز عبور">
-  <button onclick="login()">ورود</button>
+<div id="login">
+ <div id="loginBox">
+  <h3>ورود naser.ir</h3>
+  <input id="u" placeholder="user">
+  <input id="p" type="password" placeholder="password">
+  <button onclick="doLogin()">ورود</button>
+ </div>
 </div>
 
 <!-- APP -->
 <div id="app">
-  <div id="sidebar">
-    <h4>📍 انتخاب انبار (کلیک روی نقشه)</h4>
-    <input id="warehouse" placeholder="lat,lng انبار" readonly>
+ <div id="side">
+  <h4>📍 انتخاب انبار (کلیک روی نقشه)</h4>
+  <input id="wh" readonly>
 
-    <h4>🔎 جستجوی فروشگاه (کد الزامی)</h4>
-    <input id="search" placeholder="کد فروشگاه" oninput="renderStores()">
+  <h4>🔎 جستجوی فروشگاه (کد الزامی)</h4>
+  <input id="search" oninput="renderStores()">
 
-    <div id="storeList" style="max-height:220px;overflow:auto"></div>
+  <div id="stores"></div>
 
-    <button onclick="calculate()">🚚 محاسبه مسیر کامیون</button>
+  <button onclick="calc()">🚚 محاسبه</button>
 
-    <table>
-      <thead>
-        <tr>
-          <th>کد</th>
-          <th>شهر</th>
-          <th>مسئول</th>
-          <th>رفت‌وبرگشت km</th>
-        </tr>
-      </thead>
-      <tbody id="result"></tbody>
-    </table>
-  </div>
+  <table>
+   <thead>
+    <tr><th>کد</th><th>شهر</th><th>مسئول</th><th>km رفت‌وبرگشت</th></tr>
+   </thead>
+   <tbody id="out"></tbody>
+  </table>
 
-  <div id="map"></div>
+  <button onclick="logout()" style="background:#991b1b">خروج</button>
+ </div>
+ <div id="map"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
 /* ========= تنظیمات ========= */
-const USER="naser";
-const PASS="12345";
-const NESHAN_KEY="service.2b2bc79d99084f40be64ee8e482a45ef";
+const CONFIG={
+ user:"naser",
+ pass:"12345",
+ neshanKey:"service.2b2bc79d99084f40be64ee8e482a45ef"
+};
 
-/* ========= داده ثابت فروشگاه‌ها ========= */
-const stores=[
+/* ========= داده فروشگاه ========= */
+const STORES=[
  {code:"1008",city:"تهران",manager:"احمدی",lat:35.6892,lng:51.3890},
  {code:"1010",city:"کرج",manager:"رضایی",lat:35.8400,lng:50.9391},
  {code:"1020",city:"قم",manager:"محمدی",lat:34.6416,lng:50.8746}
 ];
 
-/* ========= متغیرها ========= */
 let map,warehouseMarker,warehouse;
 
-/* ========= لاگین ========= */
-function login(){
- if(user.value===USER && pass.value===PASS){
-   loginBox.style.display="none";
-   app.style.display="flex";
-   initMap();
-   renderStores();
- }else{
-   alert("یوزر یا پسورد اشتباه است");
- }
+/* ========= LOGIN ========= */
+function doLogin(){
+ if(u.value===CONFIG.user && p.value===CONFIG.pass){
+  localStorage.setItem("login","1");
+  start();
+ }else alert("اشتباه");
 }
 document.addEventListener("keydown",e=>{
- if(e.key==="Enter") login();
+ if(e.key==="Enter") doLogin();
 });
+function logout(){
+ localStorage.removeItem("login");
+ location.reload();
+}
+function start(){
+ login.style.display="none";
+ app.style.display="flex";
+ initMap();
+ renderStores();
+}
+if(localStorage.getItem("login")==="1") start();
 
-/* ========= نقشه ========= */
+/* ========= MAP ========= */
 function initMap(){
- map=L.map("map").setView([35.7,51.4],10);
+ map=L.map("map").setView([35.7,51.4],9);
+
  L.tileLayer(
-  "https://api.neshan.org/v4/map/standard/{z}/{x}/{y}.png",
-  {
-   maxZoom:19,
-   attribution:"© Neshan",
-   headers:{"Api-Key":NESHAN_KEY}
-  }
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {maxZoom:19}
  ).addTo(map);
 
  map.on("click",e=>{
   warehouse=e.latlng;
+  wh.value=warehouse.lat+","+warehouse.lng;
   if(warehouseMarker) map.removeLayer(warehouseMarker);
   warehouseMarker=L.marker(e.latlng).addTo(map).bindPopup("انبار").openPopup();
-  warehouseInput();
  });
 }
-function warehouseInput(){
- warehouseInputEl=document.getElementById("warehouse");
- warehouseInputEl.value=warehouse.lat+","+warehouse.lng;
-}
 
-/* ========= فروشگاه‌ها ========= */
+/* ========= STORES ========= */
 function renderStores(){
- storeList.innerHTML="";
+ stores.innerHTML="";
  const q=search.value;
- stores.filter(s=>!q || s.code.includes(q)).forEach(s=>{
-  storeList.innerHTML+=`
+ STORES.filter(s=>!q||s.code.includes(q)).forEach(s=>{
+  stores.innerHTML+=`
    <div>
     <input type="checkbox" value="${s.code}">
-    ${s.code} - ${s.city||""} - ${s.manager||""}
+    ${s.code} - ${s.city} - ${s.manager}
    </div>`;
  });
 }
 
-/* ========= محاسبه مسیر ========= */
-function calculate(){
+/* ========= ROUTE ========= */
+function calc(){
  if(!warehouse){alert("انبار انتخاب نشده");return;}
- result.innerHTML="";
- const selected=[...document.querySelectorAll("input[type=checkbox]:checked")]
-  .map(c=>stores.find(s=>s.code===c.value));
-
- selected.forEach(s=>routeDistance(s));
+ out.innerHTML="";
+ [...document.querySelectorAll("#stores input:checked")]
+ .map(c=>STORES.find(s=>s.code===c.value))
+ .forEach(s=>route(s));
 }
 
-function routeDistance(s){
+function route(s){
  const url=`https://api.neshan.org/v4/direction?origin=${warehouse.lat},${warehouse.lng}&destination=${s.lat},${s.lng}&vehicle=truck`;
- fetch(url,{headers:{"Api-Key":NESHAN_KEY}})
-  .then(r=>r.json())
-  .then(d=>{
-   const km=(d.routes[0].legs[0].distance.value/1000)*2;
-   result.innerHTML+=`
-    <tr>
-     <td>${s.code}</td>
-     <td>${s.city||"-"}</td>
-     <td>${s.manager||"-"}</td>
-     <td>${km.toFixed(1)}</td>
-    </tr>`;
-  });
+ fetch(url,{headers:{"Api-Key":CONFIG.neshanKey}})
+ .then(r=>r.json())
+ .then(d=>{
+  const km=(d.routes[0].legs[0].distance.value/1000)*2;
+  out.innerHTML+=`
+   <tr>
+    <td>${s.code}</td>
+    <td>${s.city}</td>
+    <td>${s.manager}</td>
+    <td>${km.toFixed(1)}</td>
+   </tr>`;
+ });
 }
 </script>
 </body>
