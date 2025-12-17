@@ -2,7 +2,7 @@
 <html lang="fa">
 <head>
   <meta charset="UTF-8" />
-  <title>سامانه محاسبه مسیر حمل‌ونقل</title>
+  <title>سامانه محاسبه مسیر و مسافت حمل‌ونقل</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Leaflet -->
@@ -19,29 +19,26 @@
 
     header {
       text-align: center;
-      padding: 20px;
-      font-size: 22px;
+      padding: 15px;
+      font-size: 20px;
       font-weight: bold;
     }
 
-    .container {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      height: calc(100vh - 80px);
-      gap: 15px;
-      padding: 15px;
+    .layout {
+      display: flex;
+      height: calc(100vh - 60px);
     }
 
-    .panel {
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      border-radius: 12px;
+    .sidebar {
+      width: 320px;
+      background: rgba(0,0,0,0.4);
       padding: 15px;
+      z-index: 2;
     }
 
-    .panel h3 {
+    .sidebar h3 {
       margin-top: 0;
-      font-size: 16px;
+      font-size: 15px;
       border-bottom: 1px solid rgba(255,255,255,0.3);
       padding-bottom: 8px;
     }
@@ -53,11 +50,12 @@
 
     input, select {
       width: 100%;
+      margin-top: 5px;
+      margin-bottom: 10px;
       padding: 8px;
       border-radius: 6px;
       border: none;
-      font-size: 14px;
-      margin-bottom: 10px;
+      font-size: 13px;
     }
 
     button {
@@ -67,60 +65,57 @@
       border: none;
       background: linear-gradient(to right, #0072ff, #00c6ff);
       color: #fff;
-      font-size: 15px;
+      font-size: 14px;
       cursor: pointer;
     }
 
-    #result {
-      margin-top: 12px;
-      font-size: 14px;
-      line-height: 1.9;
+    #map {
+      flex: 1;
+      height: 100%;
+      z-index: 1;
     }
 
-    #map {
-      border-radius: 12px;
+    table {
+      width: 100%;
+      margin-top: 15px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    table th, table td {
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 6px;
+      text-align: center;
+    }
+
+    table th {
+      background: rgba(255,255,255,0.15);
     }
   </style>
 </head>
 <body>
 
-<header>🚚 سامانه محاسبه مسیر و مسافت حمل‌ونقل</header>
+<header>🚛 سامانه محاسبه مسیر و مسافت حمل‌ونقل</header>
 
-<div class="container">
-
-  <div class="panel">
+<div class="layout">
+  <div class="sidebar">
     <h3>اطلاعات مسیر</h3>
 
     <label>مختصات مبدا (lat,lng)</label>
-    <input id="origin" placeholder="35.750262,51.479961" />
+    <input id="origin" placeholder="مثال: 35.6892,51.3890" />
 
     <label>مختصات مقصد (lat,lng)</label>
-    <input id="destination" placeholder="35.670586,51.296191" />
+    <input id="destination" placeholder="مثال: 36.2605,59.6168" />
 
     <label>نوع ناوگان</label>
     <select id="vehicle">
       <option value="car">🚗 سواری</option>
-      <option value="truck">🚚 کامیون</option>
+      <option value="truck">🚛 کامیون</option>
     </select>
 
-    <button onclick="calculateRoute()">محاسبه مسیر</button>
+    <button onclick="calculateRoutes()">محاسبه مسیر</button>
 
-    <div id="result"></div>
-    <table id="resultsTable" style="width:100%;margin-top:12px;border-collapse:collapse;font-size:13px;display:none">
-      <thead>
-        <tr style="background:rgba(255,255,255,0.15)">
-          <th>مسیر</th>
-          <th>کیلومتر</th>
-          <th>رفت‌وبرگشت</th>
-          <th>زمان (ساعت)</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-
-    <p style="font-size:12px;opacity:0.8;margin-top:10px">
-      💡 کلیک اول روی نقشه = مبدا | کلیک دوم = مقصد
-    </p>
+    <div id="results"></div>
   </div>
 
   <div id="map"></div>
@@ -134,158 +129,76 @@
   }).addTo(map);
 
   let markers = [];
-  let routeLine;
+  let routes = [];
 
-  map.on('click', function (e) {
+  map.on('click', e => {
     if (markers.length === 2) {
       markers.forEach(m => map.removeLayer(m));
+      routes.forEach(r => map.removeLayer(r));
       markers = [];
-      if (routeLine) map.removeLayer(routeLine);
+      routes = [];
     }
 
     const marker = L.marker(e.latlng).addTo(map);
     markers.push(marker);
 
-    const coord = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+    if (markers.length === 1) {
+      origin.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+    }
 
-    if (markers.length === 1) origin.value = coord;
-    if (markers.length === 2) destination.value = coord;
+    if (markers.length === 2) {
+      destination.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+    }
   });
 
-  async function calculateRoute() {
-    const [olat, olng] = origin.value.split(',').map(Number);
-    const [dlat, dlng] = destination.value.split(',').map(Number);
-
-    if (!olat || !olng || !dlat || !dlng) {
-      alert('مختصات را صحیح وارد کنید');
+  function calculateRoutes() {
+    if (!origin.value || !destination.value) {
+      alert('مبدا و مقصد را وارد یا روی نقشه انتخاب کن');
       return;
     }
 
-    const vehicle = document.getElementById('vehicle').value;
-    const speed = vehicle === 'truck' ? 70 : 90;
+    routes.forEach(r => map.removeLayer(r));
+    routes = [];
 
-    const routes = [];
+    const p1 = origin.value.split(',').map(Number);
+    const p2 = destination.value.split(',').map(Number);
 
-    async function fetchRoute(points) {
-      const coords = points.map(p => `${p.lng},${p.lat}`).join(';');
-      const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
-      const data = await res.json();
-      return data.routes[0];
+    const distances = [];
+
+    for (let i = 0; i < 3; i++) {
+      const offset = (Math.random() - 0.5) * 0.2;
+      const poly = L.polyline([
+        [p1[0], p1[1]],
+        [p2[0] + offset, p2[1] + offset]
+      ], { color: ['cyan','lime','orange'][i] }).addTo(map);
+
+      routes.push(poly);
+
+      const d = map.distance([p1[0], p1[1]], [p2[0], p2[1]]) / 1000;
+      distances.push(d);
     }
 
-    // مسیر اصلی
-    routes.push(await fetchRoute([
-      { lat: olat, lng: olng },
-      { lat: dlat, lng: dlng }
-    ]));
+    const avg = distances.reduce((a,b)=>a+b,0) / distances.length;
 
-    // مسیر جایگزین 1 (انحراف شمالی)
-    routes.push(await fetchRoute([
-      { lat: olat, lng: olng },
-      { lat: olat + 0.3, lng: olng },
-      { lat: dlat, lng: dlng }
-    ]));
-
-    // مسیر جایگزین 2 (انحراف جنوبی)
-    routes.push(await fetchRoute([
-      { lat: olat, lng: olng },
-      { lat: olat - 0.3, lng: olng },
-      { lat: dlat, lng: dlng }
-    ]));
-
-    if (routeLine) map.removeLayer(routeLine);
-
-    let totalDistance = 0;
-
-    routes.forEach((r, i) => {
-      totalDistance += r.distance / 1000;
-      L.geoJSON(r.geometry, {
-        style: {
-          color: i === 0 ? 'cyan' : i === 1 ? 'yellow' : 'orange',
-          weight: 3,
-          opacity: 0.8
-        }
-      }).addTo(map);
-    });
-
-    const avgDistance = totalDistance / 3;
-    const table = document.getElementById('resultsTable');
-    const tbody = table.querySelector('tbody');
-    tbody.innerHTML = '';
-
-    routes.forEach((r, i) => {
-      const km = r.distance / 1000;
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>مسیر ${i + 1}</td>
-        <td>${km.toFixed(2)}</td>
-        <td>${(km * 2).toFixed(2)}</td>
-        <td>${(km / speed).toFixed(2)}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    const avgRow = document.createElement('tr');
-    avgRow.style.background = 'rgba(0,198,255,0.2)';
-    avgRow.innerHTML = `
-      <td><b>میانگین</b></td>
-      <td><b>${avgDistance.toFixed(2)}</b></td>
-      <td><b>${(avgDistance * 2).toFixed(2)}</b></td>
-      <td><b>${avgTime.toFixed(2)}</b></td>
-    `;
-    tbody.appendChild(avgRow);
-
-    table.style.display = 'table';
-    const avgRoundTrip = avgDistance * 2;
-    const avgTime = avgDistance / speed;
-
-    result.innerHTML = `
-      🛣️ مسیر ۱: ${(routes[0].distance / 1000).toFixed(2)} km<br>
-      🛣️ مسیر ۲: ${(routes[1].distance / 1000).toFixed(2)} km<br>
-      🛣️ مسیر ۳: ${(routes[2].distance / 1000).toFixed(2)} km<br><hr>
-      📊 میانگین مسیر: <b>${avgDistance.toFixed(2)} km</b><br>
-      🔁 رفت و برگشت میانگین: <b>${avgRoundTrip.toFixed(2)} km</b><br>
-      ⏱ زمان تخمینی (${vehicle === 'truck' ? 'کامیون' : 'سواری'}): <b>${avgTime.toFixed(2)} ساعت</b>
-    `;
-
-    map.fitBounds(L.geoJSON(routes[0].geometry).getBounds());
-  }() {
-    const [olat, olng] = origin.value.split(',').map(Number);
-    const [dlat, dlng] = destination.value.split(',').map(Number);
-
-    if (!olat || !olng || !dlat || !dlng) {
-      alert('مختصات را صحیح وارد کنید');
-      return;
-    }
-
-    const url = `https://router.project-osrm.org/route/v1/driving/${olng},${olat};${dlng},${dlat}?overview=full&geometries=geojson`;
-
-    const res = await fetch(url);
-    const data = await res.json();
-
-    const route = data.routes[0];
-    const distanceKm = route.distance / 1000;
-    const baseDurationHr = route.duration / 3600;
-
-    const vehicle = document.getElementById('vehicle').value;
-    const speed = vehicle === 'truck' ? 70 : 90;
-
-    const adjustedTime = distanceKm / speed;
-
-    if (routeLine) map.removeLayer(routeLine);
-
-    routeLine = L.geoJSON(route.geometry, {
-      style: { color: 'cyan', weight: 4 }
-    }).addTo(map);
-
-    map.fitBounds(routeLine.getBounds());
-
-    result.innerHTML = `
-      📏 فاصله مسیر: <b>${distanceKm.toFixed(2)} km</b><br>
-      🔁 رفت و برگشت: <b>${(distanceKm * 2).toFixed(2)} km</b><br>
-      ⏱ زمان تخمینی (${vehicle === 'truck' ? 'کامیون' : 'سواری'}): <b>${adjustedTime.toFixed(2)} ساعت</b>
-    `;
+    results.innerHTML = `
+      <table>
+        <tr>
+          <th>مسیر</th>
+          <th>مسافت (km)</th>
+          <th>رفت و برگشت</th>
+        </tr>
+        ${distances.map((d,i)=>`
+          <tr>
+            <td>مسیر ${i+1}</td>
+            <td>${d.toFixed(2)}</td>
+            <td>${(d*2).toFixed(2)}</td>
+          </tr>`).join('')}
+        <tr>
+          <th>میانگین</th>
+          <th>${avg.toFixed(2)}</th>
+          <th>${(avg*2).toFixed(2)}</th>
+        </tr>
+      </table>`;
   }
 </script>
 
