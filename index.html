@@ -2,128 +2,116 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
-<title>سامانه مسیریابی و مدیریت فروشگاه‌ها</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>مسیریابی حرفه‌ای کامیون</title>
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
-body{margin:0;font-family:tahoma;background:#0f172a;color:#fff}
-#map{height:100vh}
-.panel{position:absolute;top:10px;right:10px;width:360px;max-height:95vh;overflow:auto;background:#020617cc;padding:15px;border-radius:12px;z-index:999}
-input,select,button{width:100%;margin-top:6px;padding:8px;border-radius:6px;border:none;font-size:13px}
-button{background:#2563eb;color:#fff;cursor:pointer}
-hr{border:1px solid #1e293b;margin:10px 0}
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
-th,td{border:1px solid #334155;padding:4px;text-align:center}
-th{background:#020617}
+body {margin:0;font-family:tahoma}
+#map {height:100vh;width:70%}
+#panel {
+width:30%;height:100vh;position:absolute;right:0;top:0;
+background:#111;color:#fff;padding:10px;overflow:auto
+}
+input,button {width:100%;padding:6px;margin:5px 0}
+table {width:100%;font-size:12px;margin-top:10px}
+td,th {border:1px solid #555;padding:4px}
 </style>
 </head>
+
 <body>
-
-<div class="panel">
-  <h3>📂 بارگذاری اطلاعات فروشگاه‌ها</h3>
-  <input type="file" id="excelFile" accept=".xlsx,.xls" />
-
-  <hr>
-
-  <h3>🔍 جستجو فروشگاه</h3>
-  <input id="searchCode" placeholder="کد فروشگاه" oninput="filterStores()">
-  <input id="searchCity" placeholder="شهر" oninput="filterStores()">
-  <input id="searchManager" placeholder="مسئول منطقه" oninput="filterStores()">
-
-  <select id="storeSelect"></select>
-
-  <hr>
-
-  <h3>🏭 انبار (فعلاً دستی)</h3>
-  <input id="warehouseCoord" placeholder="lat,lng انبار">
-
-  <button onclick="routeTruck()">🚛 محاسبه مسیر کامیون</button>
-
-  <table id="resultTable" style="display:none">
-    <thead>
-      <tr>
-        <th>کد</th><th>شهر</th><th>مسئول</th><th>km</th><th>min</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</div>
 
 <div id="map"></div>
 
+<div id="panel">
+<h3>📦 فروشگاه‌ها</h3>
+<input type="file" id="file">
+<input id="search" placeholder="جستجو">
+<button onclick="route()">محاسبه مسیر کامیون</button>
+
+<table id="result">
+<tr><th>کد</th><th>مسافت (km)</th></tr>
+</table>
+</div>
+
 <script>
-const API_KEY = "service.2b2bc79d99084f40be64ee8e482a45ef";
-let stores=[];
+const NESHAN_KEY = "service.2b2bc79d99084f40be64ee8e482a45ef";
 
-const map=L.map('map').setView([32.5,51.7],6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-let routeLine;
+// نقشه نشان
+const map = L.map('map').setView([35.7,51.4], 10);
+L.tileLayer('https://api.neshan.org/v2/staticmap?', {
+}).addTo(map);
 
-excelFile.onchange=e=>{
-  const reader=new FileReader();
-  reader.onload=evt=>{
-    const wb=XLSX.read(evt.target.result,{type:'binary'});
-    const data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-    stores=data.map(r=>{
-      const coord=(r[Object.keys(r).find(k=>String(r[k]).includes(','))]||'').split(',');
-      return{
-        code:r['کد فروشگاه']||r['store_code']||'',
-        city:r['شهر']||r['منطقه']||'',
-        manager:r['مسئول منطقه']||r['مسئول']||'',
-        lat:parseFloat(coord[0]),
-        lng:parseFloat(coord[1])
-      }
-    }).filter(s=>s.lat&&s.lng);
-    filterStores();
-    alert('فروشگاه‌ها بارگذاری شد: '+stores.length);
-  };
-  reader.readAsBinaryString(e.target.files[0]);
+// لایه OSM جایگزین (پایدار)
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let warehouse = null;
+let shops = [];
+let markers = [];
+let lines = [];
+
+// انتخاب انبار
+map.on('click', e => {
+ if (warehouse) map.removeLayer(warehouse);
+ warehouse = L.marker(e.latlng, {draggable:true})
+ .addTo(map).bindPopup('انبار').openPopup();
+});
+
+// بارگذاری اکسل
+file.onchange = e => {
+ const reader = new FileReader();
+ reader.onload = ev => {
+  const wb = XLSX.read(ev.target.result, {type:'binary'});
+  shops = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+  draw();
+ };
+ reader.readAsBinaryString(e.target.files[0]);
 };
 
-function filterStores(){
-  const c=searchCode.value.toLowerCase();
-  const city=searchCity.value.toLowerCase();
-  const m=searchManager.value.toLowerCase();
-  storeSelect.innerHTML='';
-  stores.filter(s=>
-    s.code.toString().includes(c)&&
-    s.city.toLowerCase().includes(city)&&
-    s.manager.toLowerCase().includes(m)
-  ).forEach((s,i)=>{
-    const opt=document.createElement('option');
-    opt.value=i;
-    opt.textContent=`${s.code} | ${s.city} | ${s.manager}`;
-    storeSelect.appendChild(opt);
-  });
+// سرچ
+search.oninput = draw;
+
+function draw(){
+ markers.forEach(m=>map.removeLayer(m));
+ markers=[];
+ shops.filter(s=>JSON.stringify(s).includes(search.value))
+ .forEach(s=>{
+  const [lat,lng] = s.latlng.split(',').map(Number);
+  const m = L.marker([lat,lng]).addTo(map)
+  .bindPopup(`کد فروشگاه: ${s["کد فروشگاه"]}`);
+  m.shop = s;
+  markers.push(m);
+ });
 }
 
-async function routeTruck(){
-  if(!storeSelect.value){alert('فروشگاه انتخاب کن');return;}
-  if(!warehouseCoord.value){alert('مختصات انبار را وارد کن');return;}
+// محاسبه مسیر کامیون
+async function route(){
+ if(!warehouse) return alert("انبار انتخاب نشده");
 
-  const s=stores[storeSelect.value];
-  const origin=warehouseCoord.value;
-  const destination=`${s.lat},${s.lng}`;
+ result.innerHTML = '<tr><th>کد</th><th>km</th></tr>';
+ lines.forEach(l=>map.removeLayer(l));
+ lines=[];
 
-  const url=`https://api.neshan.org/v4/direction?type=truck&origin=${origin}&destination=${destination}`;
-  const res=await fetch(url,{headers:{'Api-Key':API_KEY}});
-  const data=await res.json();
+ for (const m of markers){
+  const res = await fetch(
+   `https://api.neshan.org/v4/direction?type=truck&origin=`+
+   `${warehouse.getLatLng().lat},${warehouse.getLatLng().lng}`+
+   `&destination=${m.getLatLng().lat},${m.getLatLng().lng}`,
+   {headers:{'Api-Key':NESHAN_KEY}}
+  );
+  const data = await res.json();
+  const km = data.routes[0].legs[0].distance.value/1000*2;
 
-  const coords=data.routes[0].legs[0].steps.flatMap(st=>st.polyline.map(p=>[p[1],p[0]]));
-  if(routeLine)map.removeLayer(routeLine);
-  routeLine=L.polyline(coords,{color:'orange',weight:6}).addTo(map);
-  map.fitBounds(routeLine.getBounds());
+  result.innerHTML += `<tr><td>${m.shop["کد فروشگاه"]}</td><td>${km.toFixed(1)}</td></tr>`;
 
-  const dist=(data.routes[0].distance/1000).toFixed(1);
-  const dur=Math.round(data.routes[0].duration/60);
-
-  resultTable.style.display='table';
-  resultTable.querySelector('tbody').innerHTML=`<tr><td>${s.code}</td><td>${s.city}</td><td>${s.manager}</td><td>${dist}</td><td>${dur}</td></tr>`;
+  lines.push(L.polyline(
+   data.routes[0].overview_polyline.points
+  ).addTo(map));
+ }
 }
 </script>
+
 </body>
 </html>
