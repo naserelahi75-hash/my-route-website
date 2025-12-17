@@ -2,131 +2,159 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>سامانه مسیریابی کامیون</title>
+<title>naser.ir | سامانه مسیریابی</title>
 
-<!-- Neshan Map -->
 <link rel="stylesheet" href="https://static.neshan.org/sdk/leaflet/1.4.0/leaflet.css">
 <script src="https://static.neshan.org/sdk/leaflet/1.4.0/leaflet.js"></script>
 
 <style>
-body{margin:0;font-family:tahoma;background:#f4f6f8}
-header{
-  height:60px;background:#0f172a;color:#fff;
-  display:flex;align-items:center;padding:0 20px;font-size:18px
+body{margin:0;font-family:tahoma;background:#0f172a;color:#e5e7eb}
+header{height:56px;background:#020617;display:flex;align-items:center;padding:0 20px;font-weight:bold}
+#login,#app{height:100vh;display:flex;align-items:center;justify-content:center}
+.login-box{
+  background:#020617;padding:30px;border-radius:12px;width:300px
 }
-.container{display:flex;height:calc(100vh - 60px)}
+.login-box input,button{
+  width:100%;padding:10px;margin:8px 0;border-radius:6px;border:none
+}
+button{background:#2563eb;color:#fff;cursor:pointer}
+button:hover{background:#1d4ed8}
+
+.container{display:flex;height:calc(100vh - 56px)}
 .sidebar{
-  width:330px;background:#111827;color:#fff;
-  padding:15px;overflow:auto
+  width:360px;background:#020617;padding:12px;overflow:auto
 }
-.sidebar h3{margin-top:0}
-.sidebar input,.sidebar button{
-  width:100%;padding:8px;margin:6px 0;
-  border-radius:6px;border:none
-}
-.sidebar button{background:#2563eb;color:#fff;cursor:pointer}
-.sidebar button:hover{background:#1d4ed8}
+.sidebar h3{margin:10px 0}
+.sidebar input,.sidebar select{width:100%;padding:8px;margin:6px 0;border-radius:6px;border:none}
+.list{max-height:260px;overflow:auto;border:1px solid #1f2933}
+.item{padding:6px;border-bottom:1px solid #1f2933}
 #map{flex:1}
-.results{
-  background:#fff;padding:10px;border-top:1px solid #ddd
-}
-table{width:100%;border-collapse:collapse}
+table{width:100%;border-collapse:collapse;background:#fff;color:#000}
 th,td{border:1px solid #ddd;padding:6px;text-align:center}
 th{background:#f1f5f9}
+.results{padding:10px;background:#e5e7eb}
 </style>
 </head>
 
 <body>
 
-<header>🚚 سامانه مسیریابی و بهینه‌سازی حمل‌ونقل</header>
-
-<div class="container">
-  <aside class="sidebar">
-    <h3>📂 فروشگاه‌ها</h3>
-
-    <input type="file" id="file">
-    <input id="search" placeholder="🔍 جستجو (کد / شهر / مسئول)">
-
-    <button onclick="calculateRoute()">محاسبه مسیر کامیون</button>
-
-    <p style="font-size:12px;opacity:.8">
-      📍 کلیک روی نقشه = انتخاب انبار
-    </p>
-  </aside>
-
-  <main id="map"></main>
+<div id="login">
+  <div class="login-box">
+    <h3 style="text-align:center">ورود به naser.ir</h3>
+    <input id="user" placeholder="نام کاربری">
+    <input id="pass" type="password" placeholder="رمز عبور">
+    <button onclick="login()">ورود</button>
+  </div>
 </div>
 
-<section class="results">
-  <h3>📊 نتایج</h3>
-  <table id="result">
-    <tr>
-      <th>کد فروشگاه</th>
-      <th>مسافت رفت و برگشت (km)</th>
-    </tr>
-  </table>
-</section>
+<div id="app" style="display:none;flex-direction:column;width:100%">
+<header>🚚 naser.ir | سامانه حرفه‌ای مسیریابی کامیون</header>
+
+<div class="container">
+<aside class="sidebar">
+  <h3>📍 انبار</h3>
+  <input id="warehouseSearch" placeholder="جستجوی آدرس انبار">
+  <button onclick="searchWarehouse()">یافتن انبار</button>
+
+  <h3>🏪 فیلتر فروشگاه‌ها</h3>
+  <input id="fCode" placeholder="کد فروشگاه">
+  <input id="fCity" placeholder="شهر">
+  <input id="fManager" placeholder="مسئول منطقه">
+  <button onclick="renderStores()">اعمال فیلتر</button>
+
+  <h3>📋 فروشگاه‌ها</h3>
+  <div class="list" id="storeList"></div>
+
+  <button onclick="calculateRoutes()">محاسبه مسیر</button>
+</aside>
+
+<div id="map"></div>
+</div>
+
+<div class="results">
+<table id="result">
+<tr><th>کد</th><th>شهر</th><th>رفت‌وبرگشت (km)</th></tr>
+</table>
+</div>
+</div>
 
 <script>
-/* ===== تنظیمات ===== */
-const API_KEY = "API_KEY_خودت";
-let warehouse = null;
-let stores = [];
-let selected = [];
-let map;
+/* ====== تنظیمات قابل تغییر ====== */
+const SITE_NAME="naser.ir";
+let LOGIN_USER="naser";
+let LOGIN_PASS="12345";
+const API_KEY="API_KEY_نشان";
 
-/* ===== نقشه ===== */
-map = new L.Map("map",{
-  key:API_KEY,
-  center:[35.6892,51.3890],
-  zoom:10
-});
+/* ====== لاگین ====== */
+function login(){
+  if(user.value===LOGIN_USER && pass.value===LOGIN_PASS){
+    login.style.display="none";
+    app.style.display="flex";
+    initMap();
+  }else alert("نام کاربری یا رمز عبور اشتباه است");
+}
 
-/* انتخاب انبار با کلیک */
-map.on('click',e=>{
-  warehouse = e.latlng;
-  L.marker(warehouse).addTo(map)
-    .bindPopup("انبار").openPopup();
-});
+/* ====== داده فروشگاه‌ها (ثابت سیستم) ====== */
+const STORES=[
+  {code:1080,city:"تهران",manager:"منطقه 1",lat:35.732,lng:51.422},
+  {code:1102,city:"کرج",manager:"البرز",lat:35.84,lng:50.97},
+  {code:1205,city:"قم",manager:"مرکزی",lat:34.64,lng:50.88}
+];
 
-/* ===== اکسل فروشگاه ===== */
-document.getElementById('file').addEventListener('change',e=>{
-  alert("فایل بارگذاری شد (اتصال اکسل در فاز بعد فعال می‌شود)");
-});
+let map,warehouse;
 
-/* ===== مسیریابی ===== */
-async function calculateRoute(){
-  if(!warehouse){
-    alert("انبار را روی نقشه انتخاب کن");
-    return;
-  }
+/* ====== نقشه ====== */
+function initMap(){
+  map=L.map("map",{key:API_KEY,center:[35.7,51.4],zoom:9});
+  renderStores();
+}
 
-  document.getElementById("result").innerHTML = `
-    <tr><th>کد فروشگاه</th><th>مسافت رفت و برگشت (km)</th></tr>
-  `;
+/* ====== انبار ====== */
+async function searchWarehouse(){
+  const q=warehouseSearch.value;
+  const r=await fetch(
+    `https://api.neshan.org/v1/search?term=${q}&lat=35.7&lng=51.4`,
+    {headers:{'Api-Key':API_KEY}}
+  );
+  const d=await r.json();
+  if(!d.items.length)return;
+  warehouse={lat:d.items[0].location.y,lng:d.items[0].location.x};
+  L.marker([warehouse.lat,warehouse.lng]).addTo(map).bindPopup("انبار").openPopup();
+  map.setView([warehouse.lat,warehouse.lng],13);
+}
 
-  // نمونه فروشگاه تستی
-  const sample = [
-    {code:1001,lat:35.73,lng:51.41},
-    {code:1002,lat:35.67,lng:51.30}
-  ];
+/* ====== لیست فروشگاه ====== */
+function renderStores(){
+  storeList.innerHTML="";
+  STORES.filter(s=>
+    (!fCode.value||s.code==fCode.value)&&
+    (!fCity.value||s.city.includes(fCity.value))&&
+    (!fManager.value||s.manager.includes(fManager.value))
+  ).forEach(s=>{
+    storeList.innerHTML+=`
+      <div class="item">
+        <label>
+          <input type="checkbox" value="${s.code}">
+          ${s.code} - ${s.city} - ${s.manager}
+        </label>
+      </div>`;
+  });
+}
 
-  for(let s of sample){
-    const url = `https://api.neshan.org/v4/direction?type=truck&origin=${warehouse.lat},${warehouse.lng}&destination=${s.lat},${s.lng}`;
-
-    const res = await fetch(url,{
-      headers:{'Api-Key':API_KEY}
-    });
-    const data = await res.json();
-
-    const km = (data.routes[0].legs[0].distance.value*2/1000).toFixed(1);
-
-    document.getElementById("result").innerHTML += `
-      <tr>
-        <td>${s.code}</td>
-        <td>${km}</td>
-      </tr>
-    `;
+/* ====== مسیر ====== */
+async function calculateRoutes(){
+  if(!warehouse)return alert("انبار مشخص نشده");
+  result.innerHTML="<tr><th>کد</th><th>شهر</th><th>رفت‌وبرگشت (km)</th></tr>";
+  const selected=[...document.querySelectorAll("input[type=checkbox]:checked")]
+    .map(c=>STORES.find(s=>s.code==c.value));
+  for(let s of selected){
+    const r=await fetch(
+      `https://api.neshan.org/v4/direction?type=truck&origin=${warehouse.lat},${warehouse.lng}&destination=${s.lat},${s.lng}`,
+      {headers:{'Api-Key':API_KEY}}
+    );
+    const d=await r.json();
+    const km=(d.routes[0].legs[0].distance.value*2/1000).toFixed(1);
+    result.innerHTML+=`<tr><td>${s.code}</td><td>${s.city}</td><td>${km}</td></tr>`;
   }
 }
 </script>
