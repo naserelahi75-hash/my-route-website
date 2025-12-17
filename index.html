@@ -1,111 +1,243 @@
 <!DOCTYPE html>
-<html lang="fa">
+<html lang="fa" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<title>naser.ir | مسیریابی کامیون</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<meta charset="UTF-8" />
+<title>naser.ir | مسیریابی فروشگاه</title>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+
 <style>
-body{margin:0;font-family:tahoma;direction:rtl;background:#0f172a;color:#fff}
-#login,#app{height:100vh}
-#login{display:flex;align-items:center;justify-content:center}
-.box{background:#020617;padding:20px;border-radius:10px;width:300px}
-input,button{width:100%;padding:8px;margin:5px 0;border-radius:6px;border:none}
-button{background:#2563eb;color:#fff;cursor:pointer}
-#app{display:none;grid-template-columns:320px 1fr}
-#sidebar{background:#020617;padding:10px;overflow:auto}
-#map{height:100%}
-.store{border-bottom:1px solid #1e293b;padding:5px}
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: sans-serif;
+  background: #0b1220;
+  color: #fff;
+}
+
+#login, #app {
+  height: 100%;
+}
+
+#login {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.login-box {
+  background: #111827;
+  padding: 30px;
+  border-radius: 10px;
+  width: 300px;
+}
+
+.login-box input {
+  width: 100%;
+  margin: 8px 0;
+  padding: 8px;
+}
+
+button {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#app {
+  display: flex;
+}
+
+#sidebar {
+  width: 300px;
+  background: #020617;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+#map {
+  flex: 1;
+  height: 100%;
+}
+
+input {
+  width: 100%;
+  padding: 6px;
+  margin: 6px 0;
+}
 </style>
 </head>
+
 <body>
 
 <div id="login">
-  <div class="box">
+  <div class="login-box">
     <h3>ورود</h3>
-    <input id="u" placeholder="user" onkeydown="if(event.key==='Enter')doLogin()">
-    <input id="p" placeholder="password" type="password" onkeydown="if(event.key==='Enter')doLogin()">
-    <button onclick="doLogin()">ورود</button>
-    <div id="err" style="color:red"></div>
+    <input id="user" placeholder="username" />
+    <input id="pass" type="password" placeholder="password" />
+    <button onclick="login()">ورود</button>
   </div>
 </div>
 
-<div id="app">
+<div id="app" style="display:none">
   <div id="sidebar">
-    <h4>📍 انتخاب انبار (کلیک روی نقشه)</h4>
-    <div id="wh"></div>
+    <h4>📍 انتخاب انبار</h4>
+    <small>روی نقشه کلیک کن</small>
+    <div id="warehouseInfo"></div>
+
     <hr>
-    <input id="search" placeholder="جستجو کد فروشگاه" oninput="renderStores()">
-    <div id="stores"></div>
-    <button onclick="calcRoute()">🚚 محاسبه مسیر</button>
+
+    <h4>🔍 جستجو فروشگاه (کد)</h4>
+    <input id="storeCode" placeholder="مثال: 1008" />
+    <button onclick="findStore()">نمایش فروشگاه</button>
+
+    <hr>
     <div id="result"></div>
   </div>
+
   <div id="map"></div>
 </div>
 
-<script>
-/* AUTH */
-const USER='naser',PASS='12345';
-if(localStorage.logged==='1')showApp();
-function doLogin(){if(u.value===USER&&p.value===PASS){localStorage.logged='1';showApp()}else err.innerText='خطا'}
-function showApp(){login.style.display='none';app.style.display='grid';initMap()}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-/* DATA (ثابت – فقط اینو آپدیت کن) */
-const storesData=[
- {code:'1001',city:'تهران',manager:'احمدی',lat:35.71,lng:51.41},
- {code:'1002',city:'کرج',manager:'رضایی',lat:35.84,lng:50.94},
- {code:'1003',city:'قم',manager:'موسوی',lat:34.64,lng:50.88}
+<script>
+/* ================= CONFIG ================= */
+const USERNAME = "naser";
+const PASSWORD = "12345";
+const NESHAN_KEY = "YOUR_NESHAN_API_KEY";
+
+/* ===== فروشگاه‌ها (اینجا فقط آپدیت کن) ===== */
+const storesData = [
+  {
+    code: "1008",
+    name: "احمدی",
+    city: "تهران",
+    lat: 35.6892,
+    lng: 51.3890
+  },
+  {
+    code: "2001",
+    name: "کریمی",
+    city: "کرج",
+    lat: 35.8400,
+    lng: 50.9391
+  }
 ];
 
-let map,warehouse=null,markers=[],selected=[];
+let map, warehouseMarker, storeMarker;
+let warehouseLatLng = null;
 
-function initMap(){
- map=L.map('map').setView([35.7,51.4],7);
- L.tileLayer('https://static.neshan.org/sdk/leaflet/v1/tiles/default/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
- map.on('click',e=>{
-   warehouse=e.latlng;
-   wh.innerText=`انبار: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
-   L.marker(e.latlng).addTo(map).bindPopup('انبار').openPopup();
- });
- renderStores();
+/* ================= LOGIN ================= */
+function login() {
+  const u = document.getElementById("user").value;
+  const p = document.getElementById("pass").value;
+  if (u === USERNAME && p === PASSWORD) {
+    localStorage.setItem("login", "1");
+    initApp();
+  } else {
+    alert("یوزر یا پسورد اشتباه");
+  }
 }
 
-function renderStores(){
- markers.forEach(m=>map.removeLayer(m));markers=[];
- stores.innerHTML='';
- const q=search.value||'';
- storesData.filter(s=>s.code.includes(q)).forEach(s=>{
-  const div=document.createElement('div');
-  div.className='store';
-  div.innerHTML=`<input type='checkbox' onchange='toggle("${s.code}")'> ${s.code} | ${s.city} | ${s.manager}`;
-  stores.appendChild(div);
-  const m=L.marker([s.lat,s.lng]).addTo(map).bindPopup(`${s.code}<br>${s.city}`);
-  markers.push(m);
- });
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && document.getElementById("login").style.display !== "none") {
+    login();
+  }
+});
+
+function initApp() {
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "flex";
+  initMap();
 }
 
-function toggle(code){
- if(selected.includes(code))selected=selected.filter(x=>x!==code);
- else selected.push(code);
+if (localStorage.getItem("login") === "1") {
+  initApp();
 }
 
-function dist(a,b){
- const R=6371;
- const dLat=(b.lat-a.lat)*Math.PI/180;
- const dLng=(b.lng-a.lng)*Math.PI/180;
- const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
- return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+/* ================= MAP ================= */
+function initMap() {
+  map = L.map("map").setView([35.6892, 51.3890], 11);
+
+  L.tileLayer(
+    `https://api.neshan.org/v2/static?key=${NESHAN_KEY}`,
+    { attribution: "Neshan" }
+  ).addTo(map);
+
+  map.on("click", e => {
+    warehouseLatLng = e.latlng;
+    if (warehouseMarker) map.removeLayer(warehouseMarker);
+    warehouseMarker = L.marker(e.latlng).addTo(map).bindPopup("📦 انبار").openPopup();
+    document.getElementById("warehouseInfo").innerText =
+      `Lat: ${e.latlng.lat.toFixed(5)} , Lng: ${e.latlng.lng.toFixed(5)}`;
+  });
 }
 
-function calcRoute(){
- if(!warehouse||!selected.length)return alert('انبار یا فروشگاه انتخاب نشده');
- let total=0;
- selected.forEach(c=>{
-  const s=storesData.find(x=>x.code===c);
-  total+=dist(warehouse,{lat:s.lat,lng:s.lng})*2;
- });
- result.innerHTML=`مسیر بهینه (تقریبی)<br>km رفت و برگشت: ${total.toFixed(1)}`;
+/* ================= STORE ================= */
+function findStore() {
+  if (!warehouseLatLng) {
+    alert("اول انبار رو انتخاب کن");
+    return;
+  }
+
+  const code = document.getElementById("storeCode").value.trim();
+  const store = storesData.find(s => s.code === code);
+
+  if (!store) {
+    alert("فروشگاه پیدا نشد");
+    return;
+  }
+
+  if (storeMarker) map.removeLayer(storeMarker);
+
+  storeMarker = L.marker([store.lat, store.lng])
+    .addTo(map)
+    .bindPopup(`
+      <b>${store.name}</b><br>
+      ${store.city}<br>
+      کد: ${store.code}
+    `)
+    .openPopup();
+
+  const d = calcDistance(
+    warehouseLatLng.lat,
+    warehouseLatLng.lng,
+    store.lat,
+    store.lng
+  );
+
+  document.getElementById("result").innerHTML = `
+    <b>فروشگاه:</b> ${store.name}<br>
+    <b>شهر:</b> ${store.city}<br>
+    <b>رفت و برگشت:</b> ${(d * 2).toFixed(2)} km
+  `;
+
+  map.fitBounds([
+    [warehouseLatLng.lat, warehouseLatLng.lng],
+    [store.lat, store.lng]
+  ]);
+}
+
+/* ================= DISTANCE ================= */
+function calcDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180) *
+    Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 </script>
+
 </body>
 </html>
