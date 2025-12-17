@@ -2,82 +2,110 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
-<title>naser.ir</title>
-
-<!-- Leaflet -->
+<title>naser.ir | مسیریابی کامیون</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <style>
-body{margin:0;font-family:tahoma}
-#login{height:100vh;display:flex;align-items:center;justify-content:center}
-#app{display:none;height:100vh}
-.box{border:1px solid #ccc;padding:20px;width:280px}
-input,button{width:100%;padding:8px;margin:5px 0}
+body{margin:0;font-family:tahoma;direction:rtl;background:#0f172a;color:#fff}
+#login,#app{height:100vh}
+#login{display:flex;align-items:center;justify-content:center}
+.box{background:#020617;padding:20px;border-radius:10px;width:300px}
+input,button{width:100%;padding:8px;margin:5px 0;border-radius:6px;border:none}
+button{background:#2563eb;color:#fff;cursor:pointer}
+#app{display:none;grid-template-columns:320px 1fr}
+#sidebar{background:#020617;padding:10px;overflow:auto}
 #map{height:100%}
+.store{border-bottom:1px solid #1e293b;padding:5px}
 </style>
 </head>
-
 <body>
 
-<!-- LOGIN -->
 <div id="login">
   <div class="box">
     <h3>ورود</h3>
-    <input id="u" placeholder="user">
-    <input id="p" placeholder="password" type="password">
+    <input id="u" placeholder="user" onkeydown="if(event.key==='Enter')doLogin()">
+    <input id="p" placeholder="password" type="password" onkeydown="if(event.key==='Enter')doLogin()">
     <button onclick="doLogin()">ورود</button>
     <div id="err" style="color:red"></div>
   </div>
 </div>
 
-<!-- APP -->
 <div id="app">
+  <div id="sidebar">
+    <h4>📍 انتخاب انبار (کلیک روی نقشه)</h4>
+    <div id="wh"></div>
+    <hr>
+    <input id="search" placeholder="جستجو کد فروشگاه" oninput="renderStores()">
+    <div id="stores"></div>
+    <button onclick="calcRoute()">🚚 محاسبه مسیر</button>
+    <div id="result"></div>
+  </div>
   <div id="map"></div>
 </div>
 
 <script>
-/* ===== AUTH ===== */
-const USER="naser";
-const PASS="12345";
+/* AUTH */
+const USER='naser',PASS='12345';
+if(localStorage.logged==='1')showApp();
+function doLogin(){if(u.value===USER&&p.value===PASS){localStorage.logged='1';showApp()}else err.innerText='خطا'}
+function showApp(){login.style.display='none';app.style.display='grid';initMap()}
 
-if(localStorage.logged==="1"){
-  showApp();
-}
+/* DATA (ثابت – فقط اینو آپدیت کن) */
+const storesData=[
+ {code:'1001',city:'تهران',manager:'احمدی',lat:35.71,lng:51.41},
+ {code:'1002',city:'کرج',manager:'رضایی',lat:35.84,lng:50.94},
+ {code:'1003',city:'قم',manager:'موسوی',lat:34.64,lng:50.88}
+];
 
-function doLogin(){
-  if(u.value===USER && p.value===PASS){
-    localStorage.logged="1";
-    showApp();
-  }else{
-    err.innerText="یوزر یا پسورد اشتباه است";
-  }
-}
+let map,warehouse=null,markers=[],selected=[];
 
-function showApp(){
-  login.style.display="none";
-  app.style.display="block";
-  initMap();
-}
-
-/* ===== MAP ===== */
 function initMap(){
-  const map=L.map('map').setView([35.7,51.4],10);
+ map=L.map('map').setView([35.7,51.4],7);
+ L.tileLayer('https://static.neshan.org/sdk/leaflet/v1/tiles/default/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+ map.on('click',e=>{
+   warehouse=e.latlng;
+   wh.innerText=`انبار: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+   L.marker(e.latlng).addTo(map).bindPopup('انبار').openPopup();
+ });
+ renderStores();
+}
 
-  /* اگر API نشان داشتی */
-  L.tileLayer(
-   'https://static.neshan.org/sdk/leaflet/v1/tiles/default/{z}/{x}/{y}.png',
-   {maxZoom:19}
-  ).addTo(map);
+function renderStores(){
+ markers.forEach(m=>map.removeLayer(m));markers=[];
+ stores.innerHTML='';
+ const q=search.value||'';
+ storesData.filter(s=>s.code.includes(q)).forEach(s=>{
+  const div=document.createElement('div');
+  div.className='store';
+  div.innerHTML=`<input type='checkbox' onchange='toggle("${s.code}")'> ${s.code} | ${s.city} | ${s.manager}`;
+  stores.appendChild(div);
+  const m=L.marker([s.lat,s.lng]).addTo(map).bindPopup(`${s.code}<br>${s.city}`);
+  markers.push(m);
+ });
+}
 
-  /* تست کلیک */
-  map.on('click',e=>{
-    L.marker(e.latlng).addTo(map)
-      .bindPopup(`انبار<br>${e.latlng.lat}, ${e.latlng.lng}`)
-      .openPopup();
-  });
+function toggle(code){
+ if(selected.includes(code))selected=selected.filter(x=>x!==code);
+ else selected.push(code);
+}
+
+function dist(a,b){
+ const R=6371;
+ const dLat=(b.lat-a.lat)*Math.PI/180;
+ const dLng=(b.lng-a.lng)*Math.PI/180;
+ const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+ return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function calcRoute(){
+ if(!warehouse||!selected.length)return alert('انبار یا فروشگاه انتخاب نشده');
+ let total=0;
+ selected.forEach(c=>{
+  const s=storesData.find(x=>x.code===c);
+  total+=dist(warehouse,{lat:s.lat,lng:s.lng})*2;
+ });
+ result.innerHTML=`مسیر بهینه (تقریبی)<br>km رفت و برگشت: ${total.toFixed(1)}`;
 }
 </script>
-
 </body>
 </html>
