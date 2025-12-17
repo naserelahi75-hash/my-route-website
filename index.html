@@ -2,15 +2,15 @@
 <html lang="fa">
 <head>
   <meta charset="UTF-8" />
-  <title>محاسبه مسیر جاده‌ای (تکی و اکسل)</title>
+  <title>سیستم محاسبه مسیر حرفه‌ای</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- SheetJS for Excel -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <!-- XLSX -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <style>
     body {
@@ -19,180 +19,142 @@
       background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
       color: #fff;
     }
-
     header {
       text-align: center;
-      padding: 15px;
+      padding: 20px;
       font-size: 22px;
       font-weight: bold;
     }
-
     .container {
       display: grid;
       grid-template-columns: 380px 1fr;
-      height: calc(100vh - 70px);
+      height: calc(100vh - 80px);
       gap: 15px;
       padding: 15px;
     }
-
     .panel {
       background: rgba(255, 255, 255, 0.12);
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
       border-radius: 14px;
       padding: 15px;
       overflow-y: auto;
     }
-
-    h3 {
-      margin-top: 0;
-      border-bottom: 1px solid rgba(255,255,255,0.3);
-      padding-bottom: 6px;
-      font-size: 15px;
-    }
-
-    input {
+    h3 { margin-top: 0; }
+    input, select {
       width: 100%;
-      padding: 8px;
-      border-radius: 6px;
-      border: none;
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
-
-    button {
-      width: 100%;
-      padding: 10px;
+      padding: 9px;
       border-radius: 8px;
       border: none;
-      background: linear-gradient(to right, #00c6ff, #0072ff);
+      margin-bottom: 10px;
+    }
+    button {
+      width: 100%;
+      padding: 11px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(to right, #0072ff, #00c6ff);
       color: #fff;
       font-size: 15px;
       cursor: pointer;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
-
+    #map { border-radius: 14px; }
     table {
       width: 100%;
-      border-collapse: collapse;
       font-size: 12px;
+      margin-top: 10px;
+      border-collapse: collapse;
     }
-
     th, td {
       border-bottom: 1px solid rgba(255,255,255,0.2);
       padding: 6px;
       text-align: center;
     }
-
-    #map {
-      border-radius: 14px;
-    }
   </style>
 </head>
 <body>
-
-<header>🛣️ محاسبه مسیر جاده‌ای (تکی + اکسل)</header>
+<header>🗺️ سیستم محاسبه مسیر دقیق (جاده‌ای)</header>
 
 <div class="container">
   <div class="panel">
-    <h3>مسیر تکی (Lat,Lng)</h3>
-    <input id="origin" placeholder="مبدا: lat,lng" />
-    <input id="destination" placeholder="مقصد: lat,lng" />
-    <button onclick="calculateSingleRoute()">محاسبه مسیر جاده‌ای</button>
-    <div id="singleResult"></div>
+    <h3>مسیر تکی</h3>
+    <input id="origin" placeholder="مبدا (lat,lng)" />
+    <input id="destination" placeholder="مقصد (lat,lng)" />
 
-    <h3>چند مسیر (آپلود اکسل)</h3>
-    <input type="file" accept=".xlsx" onchange="handleExcel(this.files[0])" />
-    <table id="excelTable"></table>
+    <select id="mode">
+      <option value="driving">🚗 ماشین</option>
+      <option value="walking">🚶 پیاده</option>
+      <option value="bicycling">🚴 دوچرخه</option>
+    </select>
+
+    <button onclick="calcRoute()">محاسبه مسیر</button>
+
+    <h3>آپلود اکسل</h3>
+    <input type="file" id="excel" accept=".xlsx" />
+    <button onclick="processExcel()">محاسبه همه مسیرها</button>
+
+    <table id="table"></table>
   </div>
 
   <div id="map"></div>
 </div>
 
 <script>
-  // ⚠️ API KEY خودت رو اینجا بذار
-  const GOOGLE_API_KEY = "PUT_YOUR_GOOGLE_API_KEY_HERE";
+const GOOGLE_API_KEY = "PUT_YOUR_GOOGLE_API_KEY_HERE";
 
-  const map = L.map('map').setView([32.4279, 53.688], 5);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const map = L.map('map').setView([32.4279, 53.688], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-  let routeLine;
+let routeLine;
 
-  function parseLatLng(text) {
-    const parts = text.split(',').map(x => parseFloat(x.trim()));
-    return { lat: parts[0], lng: parts[1] };
-  }
+function parseLatLng(text) {
+  const [lat, lng] = text.split(',').map(Number);
+  return { lat, lng };
+}
 
-  async function calculateSingleRoute() {
-    const o = parseLatLng(origin.value);
-    const d = parseLatLng(destination.value);
+async function calcRoute(originText, destText, draw = true) {
+  const o = parseLatLng(originText || origin.value);
+  const d = parseLatLng(destText || destination.value);
+  const mode = document.getElementById('mode').value;
 
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}&key=${GOOGLE_API_KEY}`;
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}&mode=${mode}&key=${GOOGLE_API_KEY}`;
 
-    const res = await fetch(url);
-    const data = await res.json();
+  const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+  const data = await res.json();
 
-    if (data.status !== 'OK') {
-      singleResult.innerHTML = '❌ خطا در دریافت مسیر';
-      return;
-    }
+  const route = data.routes[0];
+  const distance = route.legs[0].distance.text;
 
-    const route = data.routes[0];
-    const km = route.legs[0].distance.value / 1000;
-
-    singleResult.innerHTML = `📏 فاصله جاده‌ای: <b>${km.toFixed(2)} کیلومتر</b>`;
-
+  if (draw) {
     if (routeLine) map.removeLayer(routeLine);
-
-    const coords = route.overview_polyline.points;
-    routeLine = L.polyline(decodePolyline(coords), { color: 'cyan' }).addTo(map);
+    const points = route.overview_polyline.points;
+    routeLine = L.polyline(L.Polyline.fromEncoded(points).getLatLngs(), { color: 'cyan' }).addTo(map);
     map.fitBounds(routeLine.getBounds());
+    alert('فاصله: ' + distance);
+  }
+  return distance;
+}
+
+async function processExcel() {
+  const file = excel.files[0];
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data);
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+
+  let html = '<tr><th>مبدا</th><th>مقصد</th><th>فاصله</th></tr>';
+
+  for (const r of rows) {
+    const dist = await calcRoute(r.origin, r.destination, false);
+    html += `<tr><td>${r.origin}</td><td>${r.destination}</td><td>${dist}</td></tr>`;
   }
 
-  function decodePolyline(encoded) {
-    let points = [];
-    let index = 0, lat = 0, lng = 0;
+  table.innerHTML = html;
+}
 
-    while (index < encoded.length) {
-      let b, shift = 0, result = 0;
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-      let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
-
-      points.push([lat / 1e5, lng / 1e5]);
-    }
-    return points;
-  }
-
-  function handleExcel(file) {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const workbook = XLSX.read(e.target.result, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
-
-      let html = '<tr><th>#</th><th>مبدا</th><th>مقصد</th></tr>';
-      rows.forEach((r, i) => {
-        html += `<tr><td>${i + 1}</td><td>${r.origin}</td><td>${r.destination}</td></tr>`;
-      });
-      excelTable.innerHTML = html;
-    };
-    reader.readAsBinaryString(file);
-  }
+map.on('click', e => {
+  if (!origin.value) origin.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+  else destination.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+});
 </script>
-
 </body>
 </html>
