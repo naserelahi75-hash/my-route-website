@@ -1,170 +1,108 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-    <meta charset="UTF-8">
-    <title>محاسبه بهره‌وری / پاداش</title>
+<meta charset="UTF-8">
+<title>محاسبه بهره‌وری</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
-    <style>
-        body {
-            font-family: Tahoma;
-            direction: rtl;
-            padding: 20px;
-        }
-        table {
-            border-collapse: collapse;
-            margin-top: 20px;
-            width: 100%;
-            font-size: 13px;
-        }
-        th, td {
-            border: 1px solid #ccc;
-            padding: 6px;
-            text-align: center;
-        }
-        th {
-            background: #f0f0f0;
-        }
-        button {
-            padding: 8px 15px;
-            margin-right: 10px;
-        }
-        input {
-            padding: 6px;
-        }
-    </style>
+<style>
+body { font-family: Tahoma; direction: rtl; padding: 20px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top:20px;}
+th,td { border:1px solid #ccc; padding:6px; text-align:center;}
+th { background:#eee; }
+</style>
 </head>
 
 <body>
 
-<h2>محاسبه بهره‌وری (پاداش) بر اساس فایل اکسل</h2>
+<h2>محاسبه بهره‌وری (پاداش)</h2>
 
-<label>سقف بودجه بهره‌وری:</label>
-<input type="number" id="budget" value="0">
-<br><br>
+<input type="file" id="file" accept=".xlsx">
+<button onclick="run()">محاسبه</button>
+<button onclick="download()">دانلود خروجی</button>
 
-<input type="file" id="excelFile" accept=".xlsx">
-<button onclick="processExcel()">محاسبه</button>
-<button onclick="downloadExcel()">دانلود خروجی</button>
-
-<table id="resultTable"></table>
+<table id="tbl"></table>
 
 <script>
-let finalData = [];
+let output = [];
 
-function processExcel() {
-    const file = document.getElementById("excelFile").files[0];
-    if (!file) {
-        alert("فایل اکسل را انتخاب کن");
-        return;
-    }
+function run() {
+    const file = document.getElementById("file").files[0];
+    if (!file) return alert("فایل را انتخاب کن");
 
     const reader = new FileReader();
-    reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
-
+    reader.onload = e => {
+        const wb = XLSX.read(e.target.result, {type:"array"});
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
         calculate(rows);
-        renderTable();
+        render();
     };
     reader.readAsArrayBuffer(file);
 }
 
 function calculate(rows) {
 
-    // محاسبه میانگین بهره‌وری برای پرسنل جدید
-    const avgMap = {};
-
-    rows.forEach(r => {
-        const key = r["سمت عملیاتی"] + "_" + r["منطقه"];
-        if (!avgMap[key]) avgMap[key] = [];
-        if (r["بهره‌وری ماه قبل"] > 0) {
-            avgMap[key].push(r["بهره‌وری ماه قبل"]);
-        }
+    // میانگین بهره‌وری برای پرسنل جدید
+    const avg = {};
+    rows.forEach(r=>{
+        const key = r["سمت عملیاتی"]+"_"+r["منطقه"];
+        if(!avg[key]) avg[key]=[];
+        if(Number(r["بهره‌وری ماه قبل"])>0)
+            avg[key].push(Number(r["بهره‌وری ماه قبل"]));
     });
 
-    const avgValue = {};
-    Object.keys(avgMap).forEach(k => {
-        avgValue[k] = avgMap[k].reduce((a,b)=>a+b,0) / avgMap[k].length;
+    const avgFinal = {};
+    Object.keys(avg).forEach(k=>{
+        avgFinal[k]=avg[k].reduce((a,b)=>a+b,0)/avg[k].length;
     });
 
-    finalData = rows.map(r => {
-
-        let prevProductivity = r["بهره‌وری ماه قبل"];
+    output = rows.map(r=>{
+        let prevProd = Number(r["بهره‌وری ماه قبل"]);
         let prevDays = r["تردد ماه قبل"];
 
         // پرسنل جدید
-        if (!prevProductivity || prevDays === "پرسنل جدید") {
-            const key = r["سمت عملیاتی"] + "_" + r["منطقه"];
-            prevProductivity = avgValue[key] || 0;
+        if (prevDays === "پرسنل جدید" || !prevProd) {
+            const key = r["سمت عملیاتی"]+"_"+r["منطقه"];
+            prevProd = avgFinal[key] || 0;
             prevDays = r["تعداد روز کاری ماه جاری"];
         }
 
-        const daysCurrent = r["تعداد روز کاری ماه جاری"];
-        const factor = r["ضریب بهره‌وری"];
-        const overtimePrev = r["اضافه کاری ماه قبل"] || 0;
-        const overtimeNow = r["اضافه کاری ماه جاری"] || 0;
+        prevDays = Number(prevDays);
+        const currDays = Number(r["تعداد روز کاری ماه جاری"]);
+        const factor = Number(r["ضریب بهره‌وری"]);
+        const otPrev = Number(r["اضافه کاری ماه قبل"]) || 0;
+        const otNow = Number(r["اضافه کاری ماه جاری"]) || 0;
 
-        // فرمول اصلی تو
-        let base =
-            (prevProductivity / prevDays) *
-            daysCurrent *
-            factor;
+        let base = (prevProd / prevDays) * currDays * factor;
 
-        // اثر افزایش / کاهش اضافه‌کاری (۳۰٪ تاثیر)
-        let overtimeEffect = 1;
-        if (overtimePrev > 0) {
-            overtimeEffect += ((overtimeNow - overtimePrev) / overtimePrev) * 0.3;
-        }
+        let otEffect = 1;
+        if (otPrev > 0)
+            otEffect += ((otNow - otPrev) / otPrev) * 0.25;
 
-        let finalProductivity = Math.round(base * overtimeEffect);
+        const final = Math.round(base * otEffect);
 
         return {
             ...r,
-            "بهره‌وری نهایی": finalProductivity
+            "بهره‌وری نهایی": final
         };
     });
-
-    applyBudgetLimit();
 }
 
-function applyBudgetLimit() {
-    const budget = Number(document.getElementById("budget").value);
-    if (budget <= 0) return;
-
-    const total = finalData.reduce((sum, r) => sum + r["بهره‌وری نهایی"], 0);
-    if (total <= budget) return;
-
-    const ratio = budget / total;
-
-    finalData = finalData.map(r => ({
-        ...r,
-        "بهره‌وری نهایی": Math.round(r["بهره‌وری نهایی"] * ratio)
-    }));
-}
-
-function renderTable() {
-    const table = document.getElementById("resultTable");
-    table.innerHTML = "";
-
-    const headers = Object.keys(finalData[0]);
-    table.innerHTML += "<tr>" + headers.map(h=>`<th>${h}</th>`).join("") + "</tr>";
-
-    finalData.forEach(row => {
-        table.innerHTML += "<tr>" +
-            headers.map(h=>`<td>${row[h]}</td>`).join("") +
-            "</tr>";
+function render() {
+    const t=document.getElementById("tbl");
+    t.innerHTML="";
+    const h=Object.keys(output[0]);
+    t.innerHTML+="<tr>"+h.map(x=>`<th>${x}</th>`).join("")+"</tr>";
+    output.forEach(r=>{
+        t.innerHTML+="<tr>"+h.map(x=>`<td>${r[x]}</td>`).join("")+"</tr>";
     });
 }
 
-function downloadExcel() {
-    const ws = XLSX.utils.json_to_sheet(finalData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Result");
-    XLSX.writeFile(wb, "بهره‌وری_نهایی.xlsx");
+function download() {
+    const ws=XLSX.utils.json_to_sheet(output);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Result");
+    XLSX.writeFile(wb,"بهره‌وری_نهایی.xlsx");
 }
 </script>
 
