@@ -1,103 +1,38 @@
-<!DOCTYPE html>
-<html lang="fa">
-<head>
-  <meta charset="UTF-8">
-  <title>محاسبه بهره‌وری پرسنل</title>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <style>
-    body { font-family: Tahoma; direction: rtl; padding: 20px }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px }
-    th, td { border: 1px solid #ccc; padding: 6px; font-size: 13px }
-    th { background: #eee }
-    .total { margin-top: 15px; font-size: 16px; font-weight: bold }
-  </style>
-</head>
-<body>
-
-<h3>آپلود فایل اکسل بهره‌وری</h3>
-<input type="file" id="file" />
-<button onclick="processExcel()">محاسبه</button>
-<button onclick="exportExcel()">خروجی اکسل</button>
-
-<div id="result"></div>
-<div id="budget" class="total"></div>
-
 <script>
-let finalRows = [];
-
 function toNumber(v) {
-  if (v === undefined || v === null || v === "") return 0;
-  return Number(String(v).replace(/,/g, "")) || 0;
+  if (v === undefined || v === null || v === "" || isNaN(v)) return 0;
+  return Number(String(v).replace(/,/g, ""));
 }
 
-function processExcel() {
-  const file = document.getElementById("file").files[0];
-  if (!file) {
-    alert("فایل اکسل انتخاب نشده");
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: "binary" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
-    let totalBudget = 0;
-
-    rows.forEach(r => {
-      const prev = toNumber(r["بهروری ماه قبل"]);
-      const days = toNumber(r["تعداد روز کاری ماه جاری"]);
-      const factor = toNumber(r["ضریب بهره وری"]);
-      const otNow = toNumber(r["اضافه کاری ماه جاری"]);
-      const otPrev = toNumber(r["اضافه کاری ماه قبل"]);
-      const rate = toNumber(r["نرخ محاسبه"]);
-
-      const daily = prev / 30;
-      const base = daily * days * factor;
-      const otEffect = (otNow - otPrev) * rate;
-      const finalValue = Math.round(base + otEffect);
-
-      r["محاسبه بهروری ماه جدید"] = finalValue;
-      totalBudget += finalValue;
-    });
-
-    finalRows = rows;
-    renderTable(rows);
-    document.getElementById("budget").innerText =
-      "💰 جمع کل بودجه بهره‌وری: " + totalBudget.toLocaleString();
-  };
-
-  reader.readAsBinaryString(file);
-}
-
-function renderTable(rows) {
-  let html = "<table><tr>";
-  Object.keys(rows[0]).forEach(k => html += `<th>${k}</th>`);
-  html += "</tr>";
+function calculate(rows) {
+  let total = 0;
 
   rows.forEach(r => {
-    html += "<tr>";
-    Object.values(r).forEach(v => html += `<td>${v}</td>`);
-    html += "</tr>";
+    // ستون‌ها بر اساس موقعیت واقعی اکسل
+    const prevProductivity = toNumber(r["EMPTY_7__"]); // بهره‌وری ماه قبل
+    const workDays         = toNumber(r["EMPTY_5__"]); // تعداد روز کاری ماه جاری
+    const factor           = toNumber(r["EMPTY_8__"]); // ضریب بهره‌وری
+    const otPrev           = toNumber(r["EMPTY_6__"]); // اضافه‌کاری ماه قبل
+    const otCurrent        = toNumber(r["EMPTY_9__"]); // اضافه‌کاری ماه جاری
+    const rate             = toNumber(r["EMPTY_11__"]); // نرخ محاسبه
+
+    // بهره‌وری پایه
+    const daily = prevProductivity / 30;
+    const baseProductivity = daily * workDays * factor;
+
+    // منطق معکوس اضافه‌کاری
+    const deltaOT = otPrev - otCurrent;
+    const otEffect = deltaOT * rate;
+
+    const finalValue = Math.round(baseProductivity + otEffect);
+
+    r["محاسبه بهره‌وری ماه جدید"] = finalValue;
+    total += finalValue;
   });
 
-  html += "</table>";
-  document.getElementById("result").innerHTML = html;
-}
+  document.getElementById("budget").innerText =
+    "جمع کل بودجه بهره‌وری: " + total.toLocaleString();
 
-function exportExcel() {
-  if (!finalRows.length) {
-    alert("اول محاسبه انجام بده");
-    return;
-  }
-
-  const ws = XLSX.utils.json_to_sheet(finalRows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "نتیجه بهره‌وری");
-  XLSX.writeFile(wb, "productivity_result.xlsx");
+  return rows;
 }
 </script>
-
-</body>
-</html>
