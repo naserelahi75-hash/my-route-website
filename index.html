@@ -7,14 +7,17 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
-body{font-family:tahoma;background:#f4f6f8;margin:20px}
+body{font-family:tahoma;background:#f5f6f8;margin:20px}
 h2{margin-bottom:10px}
-input,button{padding:6px}
+input,button{padding:6px;margin:3px}
 table{border-collapse:collapse;width:100%;background:#fff}
-th,td{border:1px solid #ccc;padding:5px;font-size:13px;text-align:center}
+th,td{border:1px solid #ccc;padding:6px;font-size:13px;text-align:center}
 th{background:#eee}
-.good{color:green;font-weight:bold}
-.bad{color:red;font-weight:bold}
+
+.up{color:#0a8f3c;font-weight:bold}
+.down{color:#c62828;font-weight:bold}
+.same{color:#555}
+.new{color:#1565c0;font-weight:bold}
 </style>
 </head>
 
@@ -32,14 +35,15 @@ th{background:#eee}
 
 <script>
 let finalRows=[];
+const NEW_BASE_RATE = 2500; // نرخ پایه پرسنل جدید
 
 function num(v){
   v=Number(String(v).replace(/,/g,''));
   return isNaN(v)?0:v;
 }
 
-function round6(n){
-  return Math.round(n/1000)*1000;
+function noDecimal(n){
+  return Math.round(n);
 }
 
 function calc(){
@@ -58,46 +62,57 @@ function calc(){
     for(let i=1;i<rows.length;i++){
       const row=rows[i];
 
-      const name=row[2];
-      const prevProd=num(row[7]);
-      const prevOT=num(row[6]);
-      const currOT=num(row[9]);
-      const prevDays=num(row[10])||1;
-      const currDays=num(row[5])||1;
-      const factor=num(row[8])||1;
+      const name=row[1];
+      const prevProd=num(row[2]);
+      const currOT=num(row[3]);
+      const prevOT=num(row[4]);
+      const factor=num(row[5])||1;
 
-      let base=(prevProd/prevDays)*currDays*factor;
+      let finalProd=0;
+      let status="same";
 
-      let delta=prevOT?((currOT-prevOT)/prevOT):0;
-      let otFactor=1;
+      if(prevProd===0){
+        finalProd=currOT*factor*NEW_BASE_RATE;
+        status="new";
+      }else{
+        let base=(prevProd/(prevOT||1))*currOT*factor;
+        let delta=(currOT-(prevOT||currOT))/(prevOT||currOT);
 
-      if(delta>0) otFactor=1-Math.min(delta*0.4,0.3);
-      if(delta<0) otFactor=1+Math.min(Math.abs(delta)*0.3,0.2);
+        let adjust=1;
+        if(delta>0) adjust=1-Math.min(delta*0.4,0.3);
+        if(delta<0) adjust=1+Math.min(Math.abs(delta)*0.3,0.25);
 
-      let final=base*otFactor;
+        finalProd=base*adjust;
 
-      final=Math.max(prevProd*0.6,Math.min(final,prevProd*1.2));
-      final=round6(final);
+        if(finalProd>prevProd) status="up";
+        else if(finalProd<prevProd) status="down";
+      }
 
-      total+=final;
+      finalProd=noDecimal(finalProd);
+      const diff=noDecimal(finalProd-prevProd);
+
+      total+=finalProd;
 
       finalRows.push([
         name,
-        round6(prevProd),
-        round6(currOT),
-        round6(prevOT),
+        prevProd,
+        currOT,
+        prevOT,
         factor,
-        final
+        diff,
+        finalProd,
+        status
       ]);
     }
 
     const budget=num(document.getElementById('budget').value);
     if(total>budget){
-      const s=budget/total;
+      const scale=budget/total;
       total=0;
       finalRows=finalRows.map(r=>{
-        r[5]=round6(r[5]*s);
-        total+=r[5];
+        r[6]=noDecimal(r[6]*scale);
+        r[5]=noDecimal(r[6]-r[1]);
+        total+=r[6];
         return r;
       });
     }
@@ -108,17 +123,28 @@ function calc(){
 }
 
 function render(){
-  let h='<table><tr><th>نام</th><th>بهروری قبل</th><th>اضافه‌کاری جاری</th><th>اضافه‌کاری قبل</th><th>ضریب</th><th>بهروری نهایی</th></tr>';
+  let h='<table><tr>'+
+    '<th>نام</th>'+
+    '<th>بهروری قبل</th>'+
+    '<th>اضافه‌کاری جاری</th>'+
+    '<th>اضافه‌کاری قبل</th>'+
+    '<th>ضریب</th>'+
+    '<th>تغییر بهره‌وری</th>'+
+    '<th>بهروری نهایی</th>'+
+    '</tr>';
+
   finalRows.forEach(r=>{
-    h+=`<tr>
+    h+=`<tr class="${r[7]}">
       <td>${r[0]}</td>
       <td>${r[1].toLocaleString()}</td>
       <td>${r[2].toLocaleString()}</td>
       <td>${r[3].toLocaleString()}</td>
       <td>${r[4]}</td>
-      <td class="${r[5]>=r[1]?'good':'bad'}">${r[5].toLocaleString()}</td>
+      <td>${r[5].toLocaleString()}</td>
+      <td>${r[6].toLocaleString()}</td>
     </tr>`;
   });
+
   h+='</table>';
   document.getElementById('out').innerHTML=h;
 }
@@ -126,8 +152,8 @@ function render(){
 function download(){
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet([
-    ['نام','بهروری قبل','اضافه‌کاری جاری','اضافه‌کاری قبل','ضریب','بهروری نهایی'],
-    ...finalRows
+    ['نام','بهروری قبل','اضافه‌کاری جاری','اضافه‌کاری قبل','ضریب','تغییر','بهروری نهایی'],
+    ...finalRows.map(r=>r.slice(0,7))
   ]);
   XLSX.utils.book_append_sheet(wb,ws,'Result');
   XLSX.writeFile(wb,'productivity_final.xlsx');
