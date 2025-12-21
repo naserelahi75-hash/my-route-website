@@ -1,129 +1,187 @@
 <!DOCTYPE html>
-<html lang="fa">
+<html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<title>محاسبه بهره‌وری</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<title>محاسبه بهره‌وری (پاداش)</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
-body { font-family: Tahoma; direction: rtl; padding: 20px; }
-table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top:20px;}
-th,td { border:1px solid #ccc; padding:6px; text-align:center;}
-th { background:#eee; }
+body{
+  font-family: Vazirmatn;
+  background:#f4f6f8;
+  margin:30px;
+}
+h1{
+  margin-bottom:20px;
+}
+.controls{
+  background:#fff;
+  padding:15px;
+  border-radius:8px;
+  margin-bottom:20px;
+}
+input,button{
+  padding:6px 10px;
+  font-family: Vazirmatn;
+}
+button{
+  cursor:pointer;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:#fff;
+}
+th,td{
+  border:1px solid #ddd;
+  padding:6px;
+  font-size:13px;
+  text-align:center;
+}
+th{
+  background:#f0f0f0;
+}
+tr:nth-child(even){
+  background:#fafafa;
+}
+.good{
+  color:green;
+  font-weight:600;
+}
+.bad{
+  color:red;
+  font-weight:600;
+}
+.summary{
+  margin-top:15px;
+  font-weight:600;
+}
 </style>
 </head>
 
 <body>
 
-<h2>محاسبه بهره‌وری (پاداش)</h2>
+<h1>محاسبه بهره‌وری (پاداش) بر اساس فایل اکسل</h1>
 
-<input type="file" id="file" accept=".xlsx">
-<button onclick="run()">محاسبه</button>
-<button onclick="download()">دانلود خروجی</button>
+<div class="controls">
+  <label>سقف بودجه بهره‌وری (ریال):</label>
+  <input type="number" id="budget" value="1800000000">
+  <input type="file" id="file">
+  <button onclick="calculate()">محاسبه</button>
+  <button onclick="exportExcel()">دانلود خروجی</button>
+</div>
 
-<table id="tbl"></table>
+<div id="result"></div>
+<div class="summary" id="summary"></div>
 
 <script>
-let output = [];
+let finalData = [];
 
-function run() {
-  const file = document.getElementById("file").files[0];
-  if (!file) return alert("فایل را انتخاب کن");
+function calculate(){
+  const fileInput = document.getElementById("file");
+  if(!fileInput.files.length){
+    alert("فایل اکسل را انتخاب کنید");
+    return;
+  }
 
   const reader = new FileReader();
-  reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: "array" });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-    calculate(data);
-    render();
-  };
-  reader.readAsArrayBuffer(file);
-}
+  reader.onload = e=>{
+    const wb = XLSX.read(e.target.result,{type:"binary"});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws,{defval:0});
 
-function calculate(data) {
-  const header = data[0];
-  const rows = data.slice(1);
+    finalData = [];
+    let total = 0;
 
-  // ایندکس ستون‌ها (دقیق طبق فایل تو)
-  const COL = {
-    region: 0,
-    code: 1,
-    name: 2,
-    position: 3,
-    humanSide: 4,
-    workDaysNow: 5,
-    otPrev: 6,
-    prodPrev: 7,
-    factor: 8,
-    otNow: 9,
-    workDaysPrev: 10
-  };
+    rows.forEach(r=>{
+      const prevProd = Number(r["بهروری ماه قبل"] || 0);
+      const prevOT   = Number(r["اضافه کاری ماه قبل"] || 0);
+      const currOT   = Number(r["اضافه کاری ماه جاری"] || 0);
+      const prevDays = Number(r["تعداد روز کاری ماه قبل"] || 1);
+      const currDays = Number(r["تعداد روز کاری ماه جاری"] || 1);
+      const factor   = Number(r["ضریب بهره وری"] || 1);
 
-  // میانگین برای پرسنل جدید
-  const avg = {};
+      // بهره‌وری پایه
+      let base = (prevProd / prevDays) * currDays * factor;
 
-  rows.forEach(r => {
-    const key = r[COL.position] + "_" + r[COL.region];
-    const prod = Number(r[COL.prodPrev]);
-    if (!avg[key]) avg[key] = [];
-    if (prod > 0) avg[key].push(prod);
-  });
+      // اثر اضافه‌کاری (معکوس)
+      let delta = 0;
+      if(prevOT > 0) delta = (currOT - prevOT) / prevOT;
 
-  const avgFinal = {};
-  Object.keys(avg).forEach(k => {
-    avgFinal[k] = avg[k].reduce((a,b)=>a+b,0) / avg[k].length;
-  });
+      let otFactor = 1;
+      if(delta > 0){
+        otFactor = 1 - Math.min(delta * 0.4 , 0.3);
+      }else if(delta < 0){
+        otFactor = 1 + Math.min(Math.abs(delta) * 0.3 , 0.2);
+      }
 
-  output = rows.map(r => {
-    let prevProd = Number(r[COL.prodPrev]);
-    let prevDays = r[COL.workDaysPrev];
+      let final = base * otFactor;
 
-    // پرسنل جدید
-    if (prevDays === "پرسنل جدید" || !prevProd) {
-      const key = r[COL.position] + "_" + r[COL.region];
-      prevProd = avgFinal[key] || 0;
-      prevDays = r[COL.workDaysNow];
+      // کنترل عدد غیرمنطقی
+      const max = prevProd * 1.2;
+      const min = prevProd * 0.6;
+      final = Math.max(min , Math.min(final , max));
+      final = Math.round(final);
+
+      total += final;
+
+      r["بهروری نهایی"] = final;
+      finalData.push(r);
+    });
+
+    // کنترل سقف بودجه
+    const budget = Number(document.getElementById("budget").value);
+    if(total > budget){
+      const scale = budget / total;
+      total = 0;
+      finalData.forEach(r=>{
+        r["بهروری نهایی"] = Math.round(r["بهروری نهایی"] * scale);
+        total += r["بهروری نهایی"];
+      });
     }
 
-    prevDays = Number(prevDays);
-    const currDays = Number(r[COL.workDaysNow]);
-    const factor = Number(r[COL.factor]);
-    const otPrev = Number(r[COL.otPrev]) || 0;
-    const otNow = Number(r[COL.otNow]) || 0;
-
-    let base = 0;
-    if (prevDays > 0)
-      base = (prevProd / prevDays) * currDays * factor;
-
-    let otEffect = 1;
-    if (otPrev > 0)
-      otEffect += ((otNow - otPrev) / otPrev) * 0.25;
-
-    const final = Math.round(base * otEffect);
-
-    return [...r, final];
-  });
-
-  header.push("بهره‌وری نهایی");
+    renderTable(finalData);
+    document.getElementById("summary").innerText =
+      `جمع کل بهره‌وری: ${total.toLocaleString()} ریال`;
+  };
+  reader.readAsBinaryString(fileInput.files[0]);
 }
 
-function render() {
-  const t = document.getElementById("tbl");
-  t.innerHTML = "";
-
-  t.innerHTML += "<tr>" + output[0].map((_,i)=>`<th>${i===output[0].length-1?"بهره‌وری نهایی":""}</th>`).join("") + "</tr>";
-
-  output.forEach(r=>{
-    t.innerHTML += "<tr>" + r.map(x=>`<td>${x}</td>`).join("") + "</tr>";
+function renderTable(data){
+  let html = "<table><tr>";
+  Object.keys(data[0]).forEach(k=>{
+    html += `<th>${k}</th>`;
   });
+  html += "</tr>";
+
+  data.forEach(r=>{
+    html += "<tr>";
+    Object.keys(r).forEach(k=>{
+      let cls = "";
+      if(k==="بهروری نهایی"){
+        cls = r[k] >= r["بهروری ماه قبل"] ? "good" : "bad";
+      }
+      html += `<td class="${cls}">${r[k].toLocaleString?.() ?? r[k]}</td>`;
+    });
+    html += "</tr>";
+  });
+
+  html += "</table>";
+  document.getElementById("result").innerHTML = html;
 }
 
-function download() {
-  const ws = XLSX.utils.aoa_to_sheet(output);
+function exportExcel(){
+  if(!finalData.length){
+    alert("ابتدا محاسبه انجام شود");
+    return;
+  }
+  const ws = XLSX.utils.json_to_sheet(finalData);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Result");
-  XLSX.writeFile(wb, "بهره‌وری_نهایی.xlsx");
+  XLSX.utils.book_append_sheet(wb,ws,"Result");
+  XLSX.writeFile(wb,"productivity_result.xlsx");
 }
 </script>
 
