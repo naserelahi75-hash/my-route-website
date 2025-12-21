@@ -1,32 +1,69 @@
-function toNumber(v) {
-  if (v === undefined || v === null || v === "") return 0;
-  return Number(String(v).replace(/,/g, "")) || 0;
-}
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+  <meta charset="UTF-8">
+  <title>محاسبه بهره‌وری</title>
+</head>
+<body>
 
-function calculateProductivity(rows) {
-  rows.forEach(r => {
+  <h2>محاسبه بهره‌وری از اکسل</h2>
 
-    const prevProductivity = toNumber(r["بهره‌وری ماه قبل"]);
-    const workDaysCurrent  = toNumber(r["تعداد روز کاری ماه جاری"]);
-    const factor           = toNumber(r["ظریب بهره وری"]);
-    const otCurrent        = toNumber(r["اضافه کاری ماه جاری"]);
-    const otPrev           = toNumber(r["اضاقه کاری ماه قبل"]);
-    const rate             = toNumber(r["نرخ محاسبه"]);
+  <input type="file" id="file" accept=".xlsx,.xls">
+  <button onclick="processExcel()">محاسبه</button>
 
-    // بهره‌وری پایه روزانه
-    const dailyProductivity = prevProductivity / 30;
+  <!-- کتابخانه خواندن اکسل -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-    // بهره‌وری ماه جاری
-    const baseValue = dailyProductivity * workDaysCurrent * factor;
+  <script>
+    function toNumber(v) {
+      if (v === undefined || v === null || v === "") return 0;
+      return Number(String(v).replace(/,/g, "")) || 0;
+    }
 
-    // اثر اضافه کاری
-    const otEffect = (otCurrent - otPrev) * rate;
+    function calculateProductivity(rows) {
+      rows.forEach(r => {
+        const prevProductivity = toNumber(r["بهره‌وری ماه قبل"]);
+        const workDaysCurrent  = toNumber(r["تعداد روز کاری ماه جاری"]);
+        const factor           = toNumber(r["ظریب بهره وری"]);
+        const otCurrent        = toNumber(r["اضافه کاری ماه جاری"]);
+        const otPrev           = toNumber(r["اضاقه کاری ماه قبل"]);
+        const rate             = toNumber(r["نرخ محاسبه"]);
 
-    // مقدار نهایی
-    const finalValue = baseValue + otEffect;
+        const daily = prevProductivity / 30;
+        const base  = daily * workDaysCurrent * factor;
+        const otEff = (otCurrent - otPrev) * rate;
 
-    r["محاسبه بهروری ماه جدید"] = Math.round(finalValue);
-  });
+        r["محاسبه بهروری ماه جدید"] = Math.round(base + otEff);
+      });
 
-  return rows;
-}
+      return rows;
+    }
+
+    function processExcel() {
+      const file = document.getElementById("file").files[0];
+      if (!file) {
+        alert("لطفاً فایل اکسل را انتخاب کنید");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        let rows = XLSX.utils.sheet_to_json(ws);
+
+        rows = calculateProductivity(rows);
+
+        const newWs = XLSX.utils.json_to_sheet(rows);
+        wb.Sheets[wb.SheetNames[0]] = newWs;
+
+        XLSX.writeFile(wb, "output.xlsx");
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+  </script>
+
+</body>
+</html>
