@@ -4,54 +4,26 @@ function toNumber(v) {
 }
 
 function calculateProductivity(rows) {
-
-  // ===== 1) محاسبه میانگین بهره‌وری ماه قبل بر اساس منطقه + سمت =====
-  const avgMap = {};
-
   rows.forEach(r => {
-    const region = r["منطقه"];
-    const role   = r["سمت عملیاتی"];
-    const prevProd = toNumber(r["بهروری ماه قبل"]);
-    const prevDays = toNumber(r["نردد ماه قبل"]);
 
-    if (prevProd > 0 && prevDays > 0) {
-      const key = region + "|" + role;
-      if (!avgMap[key]) avgMap[key] = { sum: 0, count: 0 };
-      avgMap[key].sum += prevProd;
-      avgMap[key].count++;
-    }
-  });
+    const prevProductivity = toNumber(r["بهره‌وری ماه قبل"]);
+    const workDaysCurrent  = toNumber(r["تعداد روز کاری ماه جاری"]);
+    const factor           = toNumber(r["ظریب بهره وری"]);
+    const otCurrent        = toNumber(r["اضافه کاری ماه جاری"]);
+    const otPrev           = toNumber(r["اضاقه کاری ماه قبل"]);
+    const rate             = toNumber(r["نرخ محاسبه"]);
 
-  // ===== 2) محاسبه بهره‌وری ماه جدید =====
-  rows.forEach(r => {
-    const region = r["منطقه"];
-    const role   = r["سمت عملیاتی"];
+    // بهره‌وری پایه روزانه
+    const dailyProductivity = prevProductivity / 30;
 
-    let prevProd = toNumber(r["بهروری ماه قبل"]);
-    let prevDays = toNumber(r["نردد ماه قبل"]);
-    const currentDays = toNumber(r["تعداد روز کاری ماه جاری"]);
-    const otPrev = toNumber(r["اضاقه کاری ماه قبل"]);
-    const otCurrent = toNumber(r["اضافه کاری ماه جاری"]);
-    const factor = toNumber(r["ظریب بهره وری"]) || 1;
+    // بهره‌وری ماه جاری
+    const baseValue = dailyProductivity * workDaysCurrent * factor;
 
-    // اگر داده ماه قبل نداشت → میانگین منطقه/سمت
-    if ((prevProd === 0 || prevDays === 0)) {
-      const key = region + "|" + role;
-      if (avgMap[key] && avgMap[key].count > 0) {
-        prevProd = avgMap[key].sum / avgMap[key].count;
-        prevDays = 30;
-      }
-    }
+    // اثر اضافه کاری
+    const otEffect = (otCurrent - otPrev) * rate;
 
-    // محاسبه
-    const daily = prevDays > 0 ? prevProd / prevDays : 0;
-    const baseValue = daily * currentDays;
-    const afterFactor = baseValue * factor;
-
-    const otChange = otCurrent - otPrev;
-    const otEffect = 1 + (otChange * 0.03);
-
-    const finalValue = afterFactor * otEffect;
+    // مقدار نهایی
+    const finalValue = baseValue + otEffect;
 
     r["محاسبه بهروری ماه جدید"] = Math.round(finalValue);
   });
