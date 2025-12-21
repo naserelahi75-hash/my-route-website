@@ -1,241 +1,56 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa">
 <head>
-<meta charset="UTF-8" />
-<title>naser.ir | مسیریابی فروشگاه</title>
-
-<link
-  rel="stylesheet"
-  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
-
+<meta charset="UTF-8">
+<title>محاسبه پاداش پرسنل</title>
 <style>
-html, body {
-  margin: 0;
-  height: 100%;
-  font-family: sans-serif;
-  background: #0b1220;
-  color: #fff;
-}
-
-#login, #app {
-  height: 100%;
-}
-
-#login {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.login-box {
-  background: #111827;
-  padding: 30px;
-  border-radius: 10px;
-  width: 300px;
-}
-
-.login-box input {
-  width: 100%;
-  margin: 8px 0;
-  padding: 8px;
-}
-
-button {
-  width: 100%;
-  padding: 10px;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-#app {
-  display: flex;
-}
-
-#sidebar {
-  width: 300px;
-  background: #020617;
-  padding: 12px;
-  box-sizing: border-box;
-}
-
-#map {
-  flex: 1;
-  height: 100%;
-}
-
-input {
-  width: 100%;
-  padding: 6px;
-  margin: 6px 0;
-}
+body { font-family: Tahoma; direction: rtl; padding: 20px; }
+input, button { padding: 6px; margin: 5px 0; width: 200px; }
 </style>
 </head>
-
 <body>
 
-<div id="login">
-  <div class="login-box">
-    <h3>ورود</h3>
-    <input id="user" placeholder="username" />
-    <input id="pass" type="password" placeholder="password" />
-    <button onclick="login()">ورود</button>
-  </div>
-</div>
+<h2>محاسبه پاداش پرسنل</h2>
 
-<div id="app" style="display:none">
-  <div id="sidebar">
-    <h4>📍 انتخاب انبار</h4>
-    <small>روی نقشه کلیک کن</small>
-    <div id="warehouseInfo"></div>
+<label>بهره‌وری ماه قبل:</label><br>
+<input id="prevProd" type="number"><br>
 
-    <hr>
+<label>روزهای ماه قبل:</label><br>
+<input id="prevDays" type="number"><br>
 
-    <h4>🔍 جستجو فروشگاه (کد)</h4>
-    <input id="storeCode" placeholder="مثال: 1008" />
-    <button onclick="findStore()">نمایش فروشگاه</button>
+<label>روزهای ماه جدید:</label><br>
+<input id="newDays" type="number"><br>
 
-    <hr>
-    <div id="result"></div>
-  </div>
+<label>ضریب عملکرد:</label><br>
+<input id="performance" type="number" step="0.01" value="1"><br>
 
-  <div id="map"></div>
-</div>
+<label>درصد تغییر اضافه‌کاری (مثلاً 25 یا -10):</label><br>
+<input id="overtimeChange" type="number"><br>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<button onclick="calc()">محاسبه پاداش</button>
+
+<h3 id="result"></h3>
 
 <script>
-/* ================= CONFIG ================= */
-const USERNAME = "naser";
-const PASSWORD = "12345";
-const NESHAN_KEY = "YOUR_NESHAN_API_KEY";
+function calc() {
+  let prevProd = +prevProd.value;
+  let prevDays = +prevDays.value;
+  let newDays = +newDays.value;
+  let performance = +performance.value;
+  let overtime = +overtimeChange.value;
 
-/* ===== فروشگاه‌ها (اینجا فقط آپدیت کن) ===== */
-const storesData = [
-  {
-    code: "1008",
-    name: "احمدی",
-    city: "تهران",
-    lat: 35.6892,
-    lng: 51.3890
-  },
-  {
-    code: "2001",
-    name: "کریمی",
-    city: "کرج",
-    lat: 35.8400,
-    lng: 50.9391
-  }
-];
+  let base = (prevProd / prevDays) * newDays * performance;
 
-let map, warehouseMarker, storeMarker;
-let warehouseLatLng = null;
+  let overtimeFactor = 1;
+  if (overtime < -20) overtimeFactor = 0.9;
+  else if (overtime <= 20) overtimeFactor = 1;
+  else if (overtime <= 50) overtimeFactor = 1.1;
+  else overtimeFactor = 1.2;
 
-/* ================= LOGIN ================= */
-function login() {
-  const u = document.getElementById("user").value;
-  const p = document.getElementById("pass").value;
-  if (u === USERNAME && p === PASSWORD) {
-    localStorage.setItem("login", "1");
-    initApp();
-  } else {
-    alert("یوزر یا پسورد اشتباه");
-  }
-}
+  let finalBonus = base * overtimeFactor;
 
-document.addEventListener("keydown", e => {
-  if (e.key === "Enter" && document.getElementById("login").style.display !== "none") {
-    login();
-  }
-});
-
-function initApp() {
-  document.getElementById("login").style.display = "none";
-  document.getElementById("app").style.display = "flex";
-  initMap();
-}
-
-if (localStorage.getItem("login") === "1") {
-  initApp();
-}
-
-/* ================= MAP ================= */
-function initMap() {
-  map = L.map("map").setView([35.6892, 51.3890], 11);
-
-  L.tileLayer(
-    `https://api.neshan.org/v2/static?key=${NESHAN_KEY}`,
-    { attribution: "Neshan" }
-  ).addTo(map);
-
-  map.on("click", e => {
-    warehouseLatLng = e.latlng;
-    if (warehouseMarker) map.removeLayer(warehouseMarker);
-    warehouseMarker = L.marker(e.latlng).addTo(map).bindPopup("📦 انبار").openPopup();
-    document.getElementById("warehouseInfo").innerText =
-      `Lat: ${e.latlng.lat.toFixed(5)} , Lng: ${e.latlng.lng.toFixed(5)}`;
-  });
-}
-
-/* ================= STORE ================= */
-function findStore() {
-  if (!warehouseLatLng) {
-    alert("اول انبار رو انتخاب کن");
-    return;
-  }
-
-  const code = document.getElementById("storeCode").value.trim();
-  const store = storesData.find(s => s.code === code);
-
-  if (!store) {
-    alert("فروشگاه پیدا نشد");
-    return;
-  }
-
-  if (storeMarker) map.removeLayer(storeMarker);
-
-  storeMarker = L.marker([store.lat, store.lng])
-    .addTo(map)
-    .bindPopup(`
-      <b>${store.name}</b><br>
-      ${store.city}<br>
-      کد: ${store.code}
-    `)
-    .openPopup();
-
-  const d = calcDistance(
-    warehouseLatLng.lat,
-    warehouseLatLng.lng,
-    store.lat,
-    store.lng
-  );
-
-  document.getElementById("result").innerHTML = `
-    <b>فروشگاه:</b> ${store.name}<br>
-    <b>شهر:</b> ${store.city}<br>
-    <b>رفت و برگشت:</b> ${(d * 2).toFixed(2)} km
-  `;
-
-  map.fitBounds([
-    [warehouseLatLng.lat, warehouseLatLng.lng],
-    [store.lat, store.lng]
-  ]);
-}
-
-/* ================= DISTANCE ================= */
-function calcDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2-lat1) * Math.PI/180;
-  const dLon = (lon2-lon1) * Math.PI/180;
-  const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1*Math.PI/180) *
-    Math.cos(lat2*Math.PI/180) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  result.innerHTML =
+    "پاداش نهایی: " + finalBonus.toFixed(0) + " تومان";
 }
 </script>
 
