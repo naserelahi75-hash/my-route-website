@@ -5,33 +5,31 @@ function toNumber(v) {
 }
 
 function calculate(rows) {
-  let total = 0;
+  let totalBudget = 0;
 
   rows.forEach(r => {
-    // ستون‌ها بر اساس موقعیت واقعی اکسل
-    const prevProductivity = toNumber(r["EMPTY_7__"]); // بهره‌وری ماه قبل
-    const workDays         = toNumber(r["EMPTY_5__"]); // تعداد روز کاری ماه جاری
-    const factor           = toNumber(r["EMPTY_8__"]); // ضریب بهره‌وری
-    const otPrev           = toNumber(r["EMPTY_6__"]); // اضافه‌کاری ماه قبل
-    const otCurrent        = toNumber(r["EMPTY_9__"]); // اضافه‌کاری ماه جاری
-    const rate             = toNumber(r["EMPTY_11__"]); // نرخ محاسبه
+    const prevProductivity = toNumber(r["بهره‌وری ماه قبل"]);
+    const workDays = toNumber(r["تعداد روز کاری ماه جاری"]);
+    const factor = toNumber(r["ضریب بهره‌وری"]);
+    const otPrev = toNumber(r["اضافه کاری ماه قبل"]);
+    const otCurrent = toNumber(r["اضافه کاری ماه جاری"]);
+    const rate = toNumber(r["نرخ محاسبه"]);
 
     // بهره‌وری پایه
     const daily = prevProductivity / 30;
-    const baseProductivity = daily * workDays * factor;
+    const base = daily * workDays * factor;
 
-    // منطق معکوس اضافه‌کاری
-    const deltaOT = otPrev - otCurrent;
-    const otEffect = deltaOT * rate;
+    // اثر معکوس اضافه‌کاری
+    const otEffect = (otPrev - otCurrent) * rate;
 
-    const finalValue = Math.round(baseProductivity + otEffect);
+    const finalValue = Math.round(base + otEffect);
 
     r["محاسبه بهره‌وری ماه جدید"] = finalValue;
-    total += finalValue;
+    totalBudget += finalValue;
   });
 
   document.getElementById("budget").innerText =
-    "جمع کل بودجه بهره‌وری: " + total.toLocaleString();
+    "جمع کل بودجه بهره‌وری: " + totalBudget.toLocaleString();
 
   return rows;
 }
