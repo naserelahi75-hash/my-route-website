@@ -1,131 +1,172 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-<meta charset="UTF-8">
-<title>سیستم محاسبه پاداش پرسنل</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-<style>
-body { font-family: Tahoma; direction: rtl; padding: 20px; }
-button { padding: 6px 12px; margin: 10px 0; }
-table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
-th { background: #f0f0f0; }
-</style>
+    <meta charset="UTF-8">
+    <title>محاسبه بهره‌وری / پاداش</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            font-family: Tahoma;
+            direction: rtl;
+            padding: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            margin-top: 20px;
+            width: 100%;
+            font-size: 13px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px;
+            text-align: center;
+        }
+        th {
+            background: #f0f0f0;
+        }
+        button {
+            padding: 8px 15px;
+            margin-right: 10px;
+        }
+        input {
+            padding: 6px;
+        }
+    </style>
 </head>
+
 <body>
 
-<h2>محاسبه پاداش بر اساس فایل اکسل</h2>
+<h2>محاسبه بهره‌وری (پاداش) بر اساس فایل اکسل</h2>
 
-<label>سقف بودجه بهره‌وری:</label><br>
-<input id="budget" type="number" placeholder="مثلاً 5000000000"><br><br>
+<label>سقف بودجه بهره‌وری:</label>
+<input type="number" id="budget" value="0">
+<br><br>
 
-<input type="file" id="fileInput" accept=".xlsx">
-<br>
-<button onclick="processFile()">محاسبه</button>
-<button onclick="exportExcel()">دانلود خروجی اکسل</button>
+<input type="file" id="excelFile" accept=".xlsx">
+<button onclick="processExcel()">محاسبه</button>
+<button onclick="downloadExcel()">دانلود خروجی</button>
 
-<div id="tableContainer"></div>
+<table id="resultTable"></table>
 
 <script>
 let finalData = [];
 
-function processFile() {
-  const file = document.getElementById("fileInput").files[0];
-  const budget = Number(document.getElementById("budget").value);
-
-  if (!file) return alert("فایل اکسل را انتخاب کنید");
-  if (!budget) return alert("سقف بودجه را وارد کنید");
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    let rows = XLSX.utils.sheet_to_json(sheet, { defval: 0 });
-
-    // میانگین سمت + منطقه
-    const avgMap = {};
-    rows.forEach(r => {
-      const key = r["منطقه"] + "|" + r["سمت عملیاتی"];
-      if (r["بهره‌وری ماه قبل"] > 0) {
-        avgMap[key] = avgMap[key] || { sum: 0, count: 0 };
-        avgMap[key].sum += r["بهره‌وری ماه قبل"];
-        avgMap[key].count++;
-      }
-    });
-
-    let total = 0;
-
-    rows.forEach(r => {
-      let prevProd = r["بهره‌وری ماه قبل"];
-      if (!prevProd) {
-        const key = r["منطقه"] + "|" + r["سمت عملیاتی"];
-        if (avgMap[key]) {
-          prevProd = avgMap[key].sum / avgMap[key].count;
-        }
-      }
-
-      const rate = prevProd / r["تعداد روز ماه قبل"];
-      let base = rate * r["تعداد روز کاری ماه جاری"] * r["ضریب بهره‌وری"];
-
-      // ضریب اضافه‌کاری
-      let change = 0;
-      if (r["اضافه‌کاری ماه قبل"] > 0) {
-        change = (r["اضافه‌کاری ماه جاری"] - r["اضافه‌کاری ماه قبل"])
-                  / r["اضافه‌کاری ماه قبل"];
-      }
-
-      let overtimeFactor = 1;
-      if (change < -0.2) overtimeFactor = 0.9;
-      else if (change > 0.2 && change <= 0.5) overtimeFactor = 1.1;
-      else if (change > 0.5) overtimeFactor = 1.2;
-
-      const final = base * overtimeFactor;
-      r["پاداش نهایی"] = Math.round(final);
-      total += final;
-    });
-
-    // کنترل بودجه
-    if (total > budget) {
-      const scale = budget / total;
-      rows.forEach(r => {
-        r["پاداش نهایی"] = Math.round(r["پاداش نهایی"] * scale);
-      });
+function processExcel() {
+    const file = document.getElementById("excelFile").files[0];
+    if (!file) {
+        alert("فایل اکسل را انتخاب کن");
+        return;
     }
 
-    finalData = rows;
-    renderTable(rows);
-  };
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet);
 
-  reader.readAsArrayBuffer(file);
+        calculate(rows);
+        renderTable();
+    };
+    reader.readAsArrayBuffer(file);
 }
 
-function renderTable(data) {
-  let html = "<table><tr>";
-  Object.keys(data[0]).forEach(k => html += "<th>" + k + "</th>");
-  html += "</tr>";
+function calculate(rows) {
 
-  data.forEach(r => {
-    html += "<tr>";
-    Object.values(r).forEach(v => html += "<td>" + v + "</td>");
-    html += "</tr>";
-  });
+    // محاسبه میانگین بهره‌وری برای پرسنل جدید
+    const avgMap = {};
 
-  html += "</table>";
-  document.getElementById("tableContainer").innerHTML = html;
+    rows.forEach(r => {
+        const key = r["سمت عملیاتی"] + "_" + r["منطقه"];
+        if (!avgMap[key]) avgMap[key] = [];
+        if (r["بهره‌وری ماه قبل"] > 0) {
+            avgMap[key].push(r["بهره‌وری ماه قبل"]);
+        }
+    });
+
+    const avgValue = {};
+    Object.keys(avgMap).forEach(k => {
+        avgValue[k] = avgMap[k].reduce((a,b)=>a+b,0) / avgMap[k].length;
+    });
+
+    finalData = rows.map(r => {
+
+        let prevProductivity = r["بهره‌وری ماه قبل"];
+        let prevDays = r["تردد ماه قبل"];
+
+        // پرسنل جدید
+        if (!prevProductivity || prevDays === "پرسنل جدید") {
+            const key = r["سمت عملیاتی"] + "_" + r["منطقه"];
+            prevProductivity = avgValue[key] || 0;
+            prevDays = r["تعداد روز کاری ماه جاری"];
+        }
+
+        const daysCurrent = r["تعداد روز کاری ماه جاری"];
+        const factor = r["ضریب بهره‌وری"];
+        const overtimePrev = r["اضافه کاری ماه قبل"] || 0;
+        const overtimeNow = r["اضافه کاری ماه جاری"] || 0;
+
+        // فرمول اصلی تو
+        let base =
+            (prevProductivity / prevDays) *
+            daysCurrent *
+            factor;
+
+        // اثر افزایش / کاهش اضافه‌کاری (۳۰٪ تاثیر)
+        let overtimeEffect = 1;
+        if (overtimePrev > 0) {
+            overtimeEffect += ((overtimeNow - overtimePrev) / overtimePrev) * 0.3;
+        }
+
+        let finalProductivity = Math.round(base * overtimeEffect);
+
+        return {
+            ...r,
+            "بهره‌وری نهایی": finalProductivity
+        };
+    });
+
+    applyBudgetLimit();
 }
 
-function exportExcel() {
-  if (!finalData.length) return alert("ابتدا محاسبه انجام شود");
-  const ws = XLSX.utils.json_to_sheet(finalData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "نتیجه");
-  XLSX.writeFile(wb, "خروجی_پاداش.xlsx");
+function applyBudgetLimit() {
+    const budget = Number(document.getElementById("budget").value);
+    if (budget <= 0) return;
+
+    const total = finalData.reduce((sum, r) => sum + r["بهره‌وری نهایی"], 0);
+    if (total <= budget) return;
+
+    const ratio = budget / total;
+
+    finalData = finalData.map(r => ({
+        ...r,
+        "بهره‌وری نهایی": Math.round(r["بهره‌وری نهایی"] * ratio)
+    }));
+}
+
+function renderTable() {
+    const table = document.getElementById("resultTable");
+    table.innerHTML = "";
+
+    const headers = Object.keys(finalData[0]);
+    table.innerHTML += "<tr>" + headers.map(h=>`<th>${h}</th>`).join("") + "</tr>";
+
+    finalData.forEach(row => {
+        table.innerHTML += "<tr>" +
+            headers.map(h=>`<td>${row[h]}</td>`).join("") +
+            "</tr>";
+    });
+}
+
+function downloadExcel() {
+    const ws = XLSX.utils.json_to_sheet(finalData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Result");
+    XLSX.writeFile(wb, "بهره‌وری_نهایی.xlsx");
 }
 </script>
 
 </body>
 </html>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
-
