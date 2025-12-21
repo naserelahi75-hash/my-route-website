@@ -4,184 +4,133 @@
 <meta charset="UTF-8">
 <title>محاسبه بهره‌وری (پاداش)</title>
 
-<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600&display=swap" rel="stylesheet">
-
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
-body{
-  font-family: Vazirmatn;
-  background:#f4f6f8;
-  margin:30px;
-}
-h1{
-  margin-bottom:20px;
-}
-.controls{
-  background:#fff;
-  padding:15px;
-  border-radius:8px;
-  margin-bottom:20px;
-}
-input,button{
-  padding:6px 10px;
-  font-family: Vazirmatn;
-}
-button{
-  cursor:pointer;
-}
-table{
-  width:100%;
-  border-collapse:collapse;
-  background:#fff;
-}
-th,td{
-  border:1px solid #ddd;
-  padding:6px;
-  font-size:13px;
-  text-align:center;
-}
-th{
-  background:#f0f0f0;
-}
-tr:nth-child(even){
-  background:#fafafa;
-}
-.good{
-  color:green;
-  font-weight:600;
-}
-.bad{
-  color:red;
-  font-weight:600;
-}
-.summary{
-  margin-top:15px;
-  font-weight:600;
-}
+body{font-family:tahoma;background:#f4f6f8;margin:20px}
+h2{margin-bottom:10px}
+input,button{padding:6px}
+table{border-collapse:collapse;width:100%;background:#fff}
+th,td{border:1px solid #ccc;padding:5px;font-size:13px;text-align:center}
+th{background:#eee}
+.good{color:green;font-weight:bold}
+.bad{color:red;font-weight:bold}
 </style>
 </head>
 
 <body>
 
-<h1>محاسبه بهره‌وری (پاداش) بر اساس فایل اکسل</h1>
+<h2>محاسبه بهره‌وری (پاداش)</h2>
 
-<div class="controls">
-  <label>سقف بودجه بهره‌وری (ریال):</label>
-  <input type="number" id="budget" value="1800000000">
-  <input type="file" id="file">
-  <button onclick="calculate()">محاسبه</button>
-  <button onclick="exportExcel()">دانلود خروجی</button>
-</div>
+سقف بودجه (ریال):
+<input id="budget" type="number" value="1800000000">
+<input type="file" id="file">
+<button onclick="calc()">محاسبه</button>
+<button onclick="download()">دانلود خروجی</button>
 
-<div id="result"></div>
-<div class="summary" id="summary"></div>
+<div id="out"></div>
 
 <script>
-let finalData = [];
+let finalRows=[];
 
-function calculate(){
-  const fileInput = document.getElementById("file");
-  if(!fileInput.files.length){
-    alert("فایل اکسل را انتخاب کنید");
-    return;
-  }
+function num(v){
+  v=Number(String(v).replace(/,/g,''));
+  return isNaN(v)?0:v;
+}
 
-  const reader = new FileReader();
-  reader.onload = e=>{
-    const wb = XLSX.read(e.target.result,{type:"binary"});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws,{defval:0});
+function round6(n){
+  return Math.round(n/1000)*1000;
+}
 
-    finalData = [];
-    let total = 0;
+function calc(){
+  const f=document.getElementById('file').files[0];
+  if(!f){alert("فایل را انتخاب کنید");return;}
 
-    rows.forEach(r=>{
-      const prevProd = Number(r["بهروری ماه قبل"] || 0);
-      const prevOT   = Number(r["اضافه کاری ماه قبل"] || 0);
-      const currOT   = Number(r["اضافه کاری ماه جاری"] || 0);
-      const prevDays = Number(r["تعداد روز کاری ماه قبل"] || 1);
-      const currDays = Number(r["تعداد روز کاری ماه جاری"] || 1);
-      const factor   = Number(r["ضریب بهره وری"] || 1);
+  const r=new FileReader();
+  r.onload=e=>{
+    const wb=XLSX.read(e.target.result,{type:'binary'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1});
 
-      // بهره‌وری پایه
-      let base = (prevProd / prevDays) * currDays * factor;
+    finalRows=[];
+    let total=0;
 
-      // اثر اضافه‌کاری (معکوس)
-      let delta = 0;
-      if(prevOT > 0) delta = (currOT - prevOT) / prevOT;
+    for(let i=1;i<rows.length;i++){
+      const row=rows[i];
 
-      let otFactor = 1;
-      if(delta > 0){
-        otFactor = 1 - Math.min(delta * 0.4 , 0.3);
-      }else if(delta < 0){
-        otFactor = 1 + Math.min(Math.abs(delta) * 0.3 , 0.2);
-      }
+      const name=row[2];
+      const prevProd=num(row[7]);
+      const prevOT=num(row[6]);
+      const currOT=num(row[9]);
+      const prevDays=num(row[10])||1;
+      const currDays=num(row[5])||1;
+      const factor=num(row[8])||1;
 
-      let final = base * otFactor;
+      let base=(prevProd/prevDays)*currDays*factor;
 
-      // کنترل عدد غیرمنطقی
-      const max = prevProd * 1.2;
-      const min = prevProd * 0.6;
-      final = Math.max(min , Math.min(final , max));
-      final = Math.round(final);
+      let delta=prevOT?((currOT-prevOT)/prevOT):0;
+      let otFactor=1;
 
-      total += final;
+      if(delta>0) otFactor=1-Math.min(delta*0.4,0.3);
+      if(delta<0) otFactor=1+Math.min(Math.abs(delta)*0.3,0.2);
 
-      r["بهروری نهایی"] = final;
-      finalData.push(r);
-    });
+      let final=base*otFactor;
 
-    // کنترل سقف بودجه
-    const budget = Number(document.getElementById("budget").value);
-    if(total > budget){
-      const scale = budget / total;
-      total = 0;
-      finalData.forEach(r=>{
-        r["بهروری نهایی"] = Math.round(r["بهروری نهایی"] * scale);
-        total += r["بهروری نهایی"];
+      final=Math.max(prevProd*0.6,Math.min(final,prevProd*1.2));
+      final=round6(final);
+
+      total+=final;
+
+      finalRows.push([
+        name,
+        round6(prevProd),
+        round6(currOT),
+        round6(prevOT),
+        factor,
+        final
+      ]);
+    }
+
+    const budget=num(document.getElementById('budget').value);
+    if(total>budget){
+      const s=budget/total;
+      total=0;
+      finalRows=finalRows.map(r=>{
+        r[5]=round6(r[5]*s);
+        total+=r[5];
+        return r;
       });
     }
 
-    renderTable(finalData);
-    document.getElementById("summary").innerText =
-      `جمع کل بهره‌وری: ${total.toLocaleString()} ریال`;
+    render();
   };
-  reader.readAsBinaryString(fileInput.files[0]);
+  r.readAsBinaryString(f);
 }
 
-function renderTable(data){
-  let html = "<table><tr>";
-  Object.keys(data[0]).forEach(k=>{
-    html += `<th>${k}</th>`;
+function render(){
+  let h='<table><tr><th>نام</th><th>بهروری قبل</th><th>اضافه‌کاری جاری</th><th>اضافه‌کاری قبل</th><th>ضریب</th><th>بهروری نهایی</th></tr>';
+  finalRows.forEach(r=>{
+    h+=`<tr>
+      <td>${r[0]}</td>
+      <td>${r[1].toLocaleString()}</td>
+      <td>${r[2].toLocaleString()}</td>
+      <td>${r[3].toLocaleString()}</td>
+      <td>${r[4]}</td>
+      <td class="${r[5]>=r[1]?'good':'bad'}">${r[5].toLocaleString()}</td>
+    </tr>`;
   });
-  html += "</tr>";
-
-  data.forEach(r=>{
-    html += "<tr>";
-    Object.keys(r).forEach(k=>{
-      let cls = "";
-      if(k==="بهروری نهایی"){
-        cls = r[k] >= r["بهروری ماه قبل"] ? "good" : "bad";
-      }
-      html += `<td class="${cls}">${r[k].toLocaleString?.() ?? r[k]}</td>`;
-    });
-    html += "</tr>";
-  });
-
-  html += "</table>";
-  document.getElementById("result").innerHTML = html;
+  h+='</table>';
+  document.getElementById('out').innerHTML=h;
 }
 
-function exportExcel(){
-  if(!finalData.length){
-    alert("ابتدا محاسبه انجام شود");
-    return;
-  }
-  const ws = XLSX.utils.json_to_sheet(finalData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,"Result");
-  XLSX.writeFile(wb,"productivity_result.xlsx");
+function download(){
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet([
+    ['نام','بهروری قبل','اضافه‌کاری جاری','اضافه‌کاری قبل','ضریب','بهروری نهایی'],
+    ...finalRows
+  ]);
+  XLSX.utils.book_append_sheet(wb,ws,'Result');
+  XLSX.writeFile(wb,'productivity_final.xlsx');
 }
 </script>
 
