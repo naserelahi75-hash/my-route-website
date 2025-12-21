@@ -1,69 +1,89 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-  <meta charset="UTF-8">
-  <title>محاسبه بهره‌وری</title>
+<meta charset="UTF-8">
+<title>محاسبه بهره‌وری</title>
+<style>
+  body { font-family: sans-serif; direction: rtl }
+  table { border-collapse: collapse; width: 100%; margin-top: 20px }
+  th, td { border: 1px solid #999; padding: 6px; text-align: center }
+  th { background: #eee }
+</style>
 </head>
 <body>
 
-  <h2>محاسبه بهره‌وری از اکسل</h2>
+<h3>محاسبه بهره‌وری پرسنل</h3>
 
-  <input type="file" id="file" accept=".xlsx,.xls">
-  <button onclick="processExcel()">محاسبه</button>
+<input type="file" id="file" accept=".xlsx,.xls">
+<br><br>
+<label>سقف بودجه هر نفر:</label>
+<input type="number" id="budget" value="3000000">
+<button onclick="processExcel()">محاسبه</button>
 
-  <!-- کتابخانه خواندن اکسل -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<div id="result"></div>
 
-  <script>
-    function toNumber(v) {
-      if (v === undefined || v === null || v === "") return 0;
-      return Number(String(v).replace(/,/g, "")) || 0;
-    }
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-    function calculateProductivity(rows) {
-      rows.forEach(r => {
-        const prevProductivity = toNumber(r["بهره‌وری ماه قبل"]);
-        const workDaysCurrent  = toNumber(r["تعداد روز کاری ماه جاری"]);
-        const factor           = toNumber(r["ظریب بهره وری"]);
-        const otCurrent        = toNumber(r["اضافه کاری ماه جاری"]);
-        const otPrev           = toNumber(r["اضاقه کاری ماه قبل"]);
-        const rate             = toNumber(r["نرخ محاسبه"]);
+<script>
+function n(v) {
+  if (v === undefined || v === null || v === "") return 0;
+  return Number(String(v).replace(/,/g, "")) || 0;
+}
 
-        const daily = prevProductivity / 30;
-        const base  = daily * workDaysCurrent * factor;
-        const otEff = (otCurrent - otPrev) * rate;
+function processExcel() {
+  const file = document.getElementById("file").files[0];
+  if (!file) return alert("فایل اکسل انتخاب نشده");
 
-        r["محاسبه بهروری ماه جدید"] = Math.round(base + otEff);
-      });
+  const budget = n(document.getElementById("budget").value);
 
-      return rows;
-    }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(new Uint8Array(e.target.result), { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws);
 
-    function processExcel() {
-      const file = document.getElementById("file").files[0];
-      if (!file) {
-        alert("لطفاً فایل اکسل را انتخاب کنید");
-        return;
-      }
+    rows.forEach(r => {
+      const prevProd = n(r["بهروری ماه قبل"]);
+      const days     = n(r["تعداد روز کاری ماه جاری"]);
+      const factor   = n(r["ضریب بهره وری"]);
+      const otNow    = n(r["اضافه کاری ماه جاری"]);
+      const otPrev   = n(r["اضافه کاری ماه قبل"]);
+      const rate     = n(r["نرخ محاسبه"]);
 
-      const reader = new FileReader();
-      reader.onload = e => {
-        const data = new Uint8Array(e.target.result);
-        const wb = XLSX.read(data, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        let rows = XLSX.utils.sheet_to_json(ws);
+      const base = (prevProd / 30) * days * factor;
+      const ot   = (otNow - otPrev) * rate;
+      let result = Math.round(base + ot);
 
-        rows = calculateProductivity(rows);
+      if (budget > 0 && result > budget) result = budget;
 
-        const newWs = XLSX.utils.json_to_sheet(rows);
-        wb.Sheets[wb.SheetNames[0]] = newWs;
+      r["محاسبه بهروری ماه جدید"] = result;
+    });
 
-        XLSX.writeFile(wb, "output.xlsx");
-      };
+    showTable(rows);
 
-      reader.readAsArrayBuffer(file);
-    }
-  </script>
+    const newWs = XLSX.utils.json_to_sheet(rows);
+    wb.Sheets[wb.SheetNames[0]] = newWs;
+    XLSX.writeFile(wb, "output.xlsx");
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function showTable(rows) {
+  let html = "<table><tr>";
+  Object.keys(rows[0]).forEach(k => html += `<th>${k}</th>`);
+  html += "</tr>";
+
+  rows.forEach(r => {
+    html += "<tr>";
+    Object.values(r).forEach(v => html += `<td>${v ?? ""}</td>`);
+    html += "</tr>";
+  });
+
+  html += "</table>";
+  document.getElementById("result").innerHTML = html;
+}
+</script>
 
 </body>
 </html>
