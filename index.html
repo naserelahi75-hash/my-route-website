@@ -1,61 +1,60 @@
 function toNumber(v) {
-    if (v === undefined || v === null || v === "") return 0;
-    return Number(String(v).replace(/,/g, "")) || 0;
+  if (v === undefined || v === null || v === "") return 0;
+  return Number(String(v).replace(/,/g, "")) || 0;
 }
 
 function calculateProductivity(rows) {
 
-    // ===== محاسبه میانگین برای پرسنل جدید =====
-    const avgMap = {};
+  // ===== 1) محاسبه میانگین بهره‌وری ماه قبل بر اساس منطقه + سمت =====
+  const avgMap = {};
 
-    rows.forEach(r => {
-        const region = r["منطقه"];
-        const role = r["سمت عملیاتی"];
-        const prevProd = toNumber(r["بهروری ماه قبل"]);
-        const prevDays = toNumber(r["نردد ماه قبل"]);
+  rows.forEach(r => {
+    const region = r["منطقه"];
+    const role   = r["سمت عملیاتی"];
+    const prevProd = toNumber(r["بهروری ماه قبل"]);
+    const prevDays = toNumber(r["نردد ماه قبل"]);
 
-        if (prevProd > 0 && prevDays > 0) {
-            const key = region + "|" + role;
-            if (!avgMap[key]) avgMap[key] = { sum: 0, count: 0 };
-            avgMap[key].sum += prevProd;
-            avgMap[key].count++;
-        }
-    });
+    if (prevProd > 0 && prevDays > 0) {
+      const key = region + "|" + role;
+      if (!avgMap[key]) avgMap[key] = { sum: 0, count: 0 };
+      avgMap[key].sum += prevProd;
+      avgMap[key].count++;
+    }
+  });
 
-    rows.forEach(r => {
-        const region = r["منطقه"];
-        const role = r["سمت عملیاتی"];
+  // ===== 2) محاسبه بهره‌وری ماه جدید =====
+  rows.forEach(r => {
+    const region = r["منطقه"];
+    const role   = r["سمت عملیاتی"];
 
-        let prevProd = toNumber(r["بهروری ماه قبل"]);
-        let prevDays = toNumber(r["نردد ماه قبل"]);
-        const currentDays = toNumber(r["تعداد روز کاری ماه جاری"]);
-        const factor = toNumber(r["ضریب بهره وری"]) || 1;
+    let prevProd = toNumber(r["بهروری ماه قبل"]);
+    let prevDays = toNumber(r["نردد ماه قبل"]);
+    const currentDays = toNumber(r["تعداد روز کاری ماه جاری"]);
+    const otPrev = toNumber(r["اضاقه کاری ماه قبل"]);
+    const otCurrent = toNumber(r["اضافه کاری ماه جاری"]);
+    const factor = toNumber(r["ظریب بهره وری"]) || 1;
 
-        const otPrev = toNumber(r["اضافه کاری ماه قبل"]);
-        const otCurrent = toNumber(r["اضافه کاری ماه جاری"]);
+    // اگر داده ماه قبل نداشت → میانگین منطقه/سمت
+    if ((prevProd === 0 || prevDays === 0)) {
+      const key = region + "|" + role;
+      if (avgMap[key] && avgMap[key].count > 0) {
+        prevProd = avgMap[key].sum / avgMap[key].count;
+        prevDays = 30;
+      }
+    }
 
-        // ===== پرسنل جدید =====
-        if (prevProd === 0 || prevDays === 0) {
-            const key = region + "|" + role;
-            if (avgMap[key] && avgMap[key].count > 0) {
-                prevProd = avgMap[key].sum / avgMap[key].count;
-                prevDays = currentDays || 30;
-            }
-        }
+    // محاسبه
+    const daily = prevDays > 0 ? prevProd / prevDays : 0;
+    const baseValue = daily * currentDays;
+    const afterFactor = baseValue * factor;
 
-        // ===== محاسبه =====
-        let daily = prevDays > 0 ? prevProd / prevDays : 0;
-        let base = daily * currentDays;
-        let afterFactor = base * factor;
+    const otChange = otCurrent - otPrev;
+    const otEffect = 1 + (otChange * 0.03);
 
-        let otChange = otCurrent - otPrev;
-        let otEffect = 1 + (otChange * 0.03);
+    const finalValue = afterFactor * otEffect;
 
-        let finalValue = afterFactor * otEffect;
+    r["محاسبه بهروری ماه جدید"] = Math.round(finalValue);
+  });
 
-        // بدون اعشار
-        r["محاسبه بهروری ماه جدید"] = Math.round(finalValue);
-    });
-
-    return rows;
+  return rows;
 }
