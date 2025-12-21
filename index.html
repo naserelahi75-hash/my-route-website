@@ -27,82 +27,103 @@ th { background:#eee; }
 let output = [];
 
 function run() {
-    const file = document.getElementById("file").files[0];
-    if (!file) return alert("فایل را انتخاب کن");
+  const file = document.getElementById("file").files[0];
+  if (!file) return alert("فایل را انتخاب کن");
 
-    const reader = new FileReader();
-    reader.onload = e => {
-        const wb = XLSX.read(e.target.result, {type:"array"});
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        calculate(rows);
-        render();
-    };
-    reader.readAsArrayBuffer(file);
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    calculate(data);
+    render();
+  };
+  reader.readAsArrayBuffer(file);
 }
 
-function calculate(rows) {
+function calculate(data) {
+  const header = data[0];
+  const rows = data.slice(1);
 
-    // میانگین بهره‌وری برای پرسنل جدید
-    const avg = {};
-    rows.forEach(r=>{
-        const key = r["سمت عملیاتی"]+"_"+r["منطقه"];
-        if(!avg[key]) avg[key]=[];
-        if(Number(r["بهره‌وری ماه قبل"])>0)
-            avg[key].push(Number(r["بهره‌وری ماه قبل"]));
-    });
+  // ایندکس ستون‌ها (دقیق طبق فایل تو)
+  const COL = {
+    region: 0,
+    code: 1,
+    name: 2,
+    position: 3,
+    humanSide: 4,
+    workDaysNow: 5,
+    otPrev: 6,
+    prodPrev: 7,
+    factor: 8,
+    otNow: 9,
+    workDaysPrev: 10
+  };
 
-    const avgFinal = {};
-    Object.keys(avg).forEach(k=>{
-        avgFinal[k]=avg[k].reduce((a,b)=>a+b,0)/avg[k].length;
-    });
+  // میانگین برای پرسنل جدید
+  const avg = {};
 
-    output = rows.map(r=>{
-        let prevProd = Number(r["بهره‌وری ماه قبل"]);
-        let prevDays = r["تردد ماه قبل"];
+  rows.forEach(r => {
+    const key = r[COL.position] + "_" + r[COL.region];
+    const prod = Number(r[COL.prodPrev]);
+    if (!avg[key]) avg[key] = [];
+    if (prod > 0) avg[key].push(prod);
+  });
 
-        // پرسنل جدید
-        if (prevDays === "پرسنل جدید" || !prevProd) {
-            const key = r["سمت عملیاتی"]+"_"+r["منطقه"];
-            prevProd = avgFinal[key] || 0;
-            prevDays = r["تعداد روز کاری ماه جاری"];
-        }
+  const avgFinal = {};
+  Object.keys(avg).forEach(k => {
+    avgFinal[k] = avg[k].reduce((a,b)=>a+b,0) / avg[k].length;
+  });
 
-        prevDays = Number(prevDays);
-        const currDays = Number(r["تعداد روز کاری ماه جاری"]);
-        const factor = Number(r["ضریب بهره‌وری"]);
-        const otPrev = Number(r["اضافه کاری ماه قبل"]) || 0;
-        const otNow = Number(r["اضافه کاری ماه جاری"]) || 0;
+  output = rows.map(r => {
+    let prevProd = Number(r[COL.prodPrev]);
+    let prevDays = r[COL.workDaysPrev];
 
-        let base = (prevProd / prevDays) * currDays * factor;
+    // پرسنل جدید
+    if (prevDays === "پرسنل جدید" || !prevProd) {
+      const key = r[COL.position] + "_" + r[COL.region];
+      prevProd = avgFinal[key] || 0;
+      prevDays = r[COL.workDaysNow];
+    }
 
-        let otEffect = 1;
-        if (otPrev > 0)
-            otEffect += ((otNow - otPrev) / otPrev) * 0.25;
+    prevDays = Number(prevDays);
+    const currDays = Number(r[COL.workDaysNow]);
+    const factor = Number(r[COL.factor]);
+    const otPrev = Number(r[COL.otPrev]) || 0;
+    const otNow = Number(r[COL.otNow]) || 0;
 
-        const final = Math.round(base * otEffect);
+    let base = 0;
+    if (prevDays > 0)
+      base = (prevProd / prevDays) * currDays * factor;
 
-        return {
-            ...r,
-            "بهره‌وری نهایی": final
-        };
-    });
+    let otEffect = 1;
+    if (otPrev > 0)
+      otEffect += ((otNow - otPrev) / otPrev) * 0.25;
+
+    const final = Math.round(base * otEffect);
+
+    return [...r, final];
+  });
+
+  header.push("بهره‌وری نهایی");
 }
 
 function render() {
-    const t=document.getElementById("tbl");
-    t.innerHTML="";
-    const h=Object.keys(output[0]);
-    t.innerHTML+="<tr>"+h.map(x=>`<th>${x}</th>`).join("")+"</tr>";
-    output.forEach(r=>{
-        t.innerHTML+="<tr>"+h.map(x=>`<td>${r[x]}</td>`).join("")+"</tr>";
-    });
+  const t = document.getElementById("tbl");
+  t.innerHTML = "";
+
+  t.innerHTML += "<tr>" + output[0].map((_,i)=>`<th>${i===output[0].length-1?"بهره‌وری نهایی":""}</th>`).join("") + "</tr>";
+
+  output.forEach(r=>{
+    t.innerHTML += "<tr>" + r.map(x=>`<td>${x}</td>`).join("") + "</tr>";
+  });
 }
 
 function download() {
-    const ws=XLSX.utils.json_to_sheet(output);
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,"Result");
-    XLSX.writeFile(wb,"بهره‌وری_نهایی.xlsx");
+  const ws = XLSX.utils.aoa_to_sheet(output);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Result");
+  XLSX.writeFile(wb, "بهره‌وری_نهایی.xlsx");
 }
 </script>
 
