@@ -1,148 +1,61 @@
-<!DOCTYPE html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<title>محاسبه بهره‌وری (پاداش)</title>
-
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
-<style>
-body {
-    font-family: Tahoma;
-    background: #f5f5f5;
-    padding: 20px;
+function toNumber(v) {
+    if (v === undefined || v === null || v === "") return 0;
+    return Number(String(v).replace(/,/g, "")) || 0;
 }
-h2 {
-    margin-bottom: 10px;
-}
-input, button {
-    padding: 6px;
-    margin: 5px;
-}
-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #fff;
-}
-th, td {
-    border: 1px solid #ccc;
-    padding: 6px;
-    text-align: center;
-}
-th {
-    background: #eee;
-}
-.ok {
-    color: green;
-    font-weight: bold;
-}
-</style>
-</head>
 
-<body>
+function calculateProductivity(rows) {
 
-<h2>محاسبه بهره‌وری (پاداش)</h2>
+    // ===== محاسبه میانگین برای پرسنل جدید =====
+    const avgMap = {};
 
-<input type="file" id="fileInput" accept=".xlsx">
-سقف بودجه (ریال):
-<input type="number" id="budget" value="100000000">
-<button onclick="processExcel()">محاسبه</button>
-<button onclick="exportExcel()">خروجی اکسل</button>
+    rows.forEach(r => {
+        const region = r["منطقه"];
+        const role = r["سمت عملیاتی"];
+        const prevProd = toNumber(r["بهروری ماه قبل"]);
+        const prevDays = toNumber(r["نردد ماه قبل"]);
 
-<br><br>
-
-<table id="resultTable">
-<thead>
-<tr>
-<th>نام</th>
-<th>بهره‌وری قبل</th>
-<th>اضافه‌کاری قبل</th>
-<th>اضافه‌کاری جاری</th>
-<th>ضریب</th>
-<th>تغییر بهره‌وری</th>
-<th>بهره‌وری نهایی</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-
-<script>
-let finalData = [];
-
-function processExcel() {
-    const file = document.getElementById("fileInput").files[0];
-    if (!file) {
-        alert("فایل اکسل انتخاب نشده");
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
-
-        finalData = [];
-        const tbody = document.querySelector("#resultTable tbody");
-        tbody.innerHTML = "";
-
-        let total = 0;
-        const budget = Number(document.getElementById("budget").value);
-
-        rows.forEach(r => {
-            const name = r.name;
-            const prevEff = Number(r.prev_eff) || 0;
-            const prevOt = Number(r.prev_ot) || 0;
-            const currOt = Number(r.curr_ot) || 0;
-            const coef = Number(r.coef) || 1;
-
-            const change = (currOt - prevOt) * coef;
-            let finalEff = prevEff + change;
-
-            total += finalEff;
-
-            finalData.push({
-                name,
-                prevEff,
-                prevOt,
-                currOt,
-                coef,
-                change,
-                finalEff
-            });
-
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${name}</td>
-                <td>${prevEff}</td>
-                <td>${prevOt}</td>
-                <td>${currOt}</td>
-                <td>${coef}</td>
-                <td>${change}</td>
-                <td class="ok">${finalEff}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        if (total > budget) {
-            alert("⚠️ جمع پاداش از سقف بودجه بیشتر است");
+        if (prevProd > 0 && prevDays > 0) {
+            const key = region + "|" + role;
+            if (!avgMap[key]) avgMap[key] = { sum: 0, count: 0 };
+            avgMap[key].sum += prevProd;
+            avgMap[key].count++;
         }
-    };
-    reader.readAsArrayBuffer(file);
-}
+    });
 
-function exportExcel() {
-    if (finalData.length === 0) {
-        alert("داده‌ای برای خروجی وجود ندارد");
-        return;
-    }
-    const ws = XLSX.utils.json_to_sheet(finalData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Result");
-    XLSX.writeFile(wb, "bonus_result.xlsx");
-}
-</script>
+    rows.forEach(r => {
+        const region = r["منطقه"];
+        const role = r["سمت عملیاتی"];
 
-</body>
-</html>
+        let prevProd = toNumber(r["بهروری ماه قبل"]);
+        let prevDays = toNumber(r["نردد ماه قبل"]);
+        const currentDays = toNumber(r["تعداد روز کاری ماه جاری"]);
+        const factor = toNumber(r["ضریب بهره وری"]) || 1;
+
+        const otPrev = toNumber(r["اضافه کاری ماه قبل"]);
+        const otCurrent = toNumber(r["اضافه کاری ماه جاری"]);
+
+        // ===== پرسنل جدید =====
+        if (prevProd === 0 || prevDays === 0) {
+            const key = region + "|" + role;
+            if (avgMap[key] && avgMap[key].count > 0) {
+                prevProd = avgMap[key].sum / avgMap[key].count;
+                prevDays = currentDays || 30;
+            }
+        }
+
+        // ===== محاسبه =====
+        let daily = prevDays > 0 ? prevProd / prevDays : 0;
+        let base = daily * currentDays;
+        let afterFactor = base * factor;
+
+        let otChange = otCurrent - otPrev;
+        let otEffect = 1 + (otChange * 0.03);
+
+        let finalValue = afterFactor * otEffect;
+
+        // بدون اعشار
+        r["محاسبه بهروری ماه جدید"] = Math.round(finalValue);
+    });
+
+    return rows;
+}
