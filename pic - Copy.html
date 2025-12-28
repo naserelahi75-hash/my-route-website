@@ -3,79 +3,140 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ویرایش تصویر موبایل</title>
+<title>Crop حرفه‌ای تصویر</title>
+
 <style>
 body{font-family:tahoma;background:#f5f5f5;padding:15px}
-input,button{width:100%;margin-top:10px;padding:10px}
-canvas{max-width:100%;border:1px solid #ccc;margin-top:10px;touch-action:none}
+canvas{max-width:100%;border:1px solid #ccc;touch-action:none}
+input,button{width:100%;padding:10px;margin-top:10px}
 </style>
 </head>
 <body>
 
-<h3>آپلود و کراپ تصویر (موبایل)</h3>
+<h3>کراپ تصویر (مثل فتوشاپ)</h3>
 
 <input type="file" id="fileInput" accept="image/*">
 
 <canvas id="canvas"></canvas>
 
 <label>کیفیت خروجی</label>
-<input type="range" id="quality" min="0.3" max="1" step="0.1" value="0.8">
+<input type="range" id="quality" min="0.3" max="1" step="0.1" value="0.9">
 
-<button id="save">ذخیره</button>
+<button id="save">ذخیره تصویر</button>
 
 <script>
-const fileInput = document.getElementById('fileInput');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const fileInput = document.getElementById('fileInput');
 const quality = document.getElementById('quality');
 
 let img = new Image();
-let sx, sy, ex, ey, dragging=false;
+let crop = {x:0,y:0,w:0,h:0};
+let draggingCorner = null;
+const cornerSize = 20;
 
-fileInput.onchange = e => {
-  const reader = new FileReader();
-  reader.onload = ev => {
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img,0,0);
-    }
-    img.src = ev.target.result;
-  }
-  reader.readAsDataURL(e.target.files[0]);
+// ---------- Utils ----------
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(img,0,0);
+
+  // overlay
+  ctx.save();
+  ctx.strokeStyle="red";
+  ctx.setLineDash([8,5]);
+  ctx.lineWidth=2;
+  ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
+  ctx.restore();
+
+  // corners
+  drawCorner(crop.x,crop.y);
+  drawCorner(crop.x+crop.w,crop.y);
+  drawCorner(crop.x,crop.y+crop.h);
+  drawCorner(crop.x+crop.w,crop.y+crop.h);
 }
 
-// Touch + Mouse
-function pos(e){
+function drawCorner(x,y){
+  ctx.fillStyle="#fff";
+  ctx.strokeStyle="#000";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.rect(x-cornerSize/2,y-cornerSize/2,cornerSize,cornerSize);
+  ctx.fill();ctx.stroke();
+}
+
+function getPos(e){
   const r=canvas.getBoundingClientRect();
   const t=e.touches?e.touches[0]:e;
   return {x:t.clientX-r.left,y:t.clientY-r.top};
 }
 
+function hitCorner(x,y,cx,cy){
+  return Math.abs(x-cx)<cornerSize && Math.abs(y-cy)<cornerSize;
+}
+
+// ---------- Load Image ----------
+fileInput.onchange=e=>{
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    img.onload=()=>{
+      canvas.width=img.width;
+      canvas.height=img.height;
+      crop={x:0,y:0,w:img.width,h:img.height}; // default full
+      draw();
+    }
+    img.src=ev.target.result;
+  }
+  reader.readAsDataURL(e.target.files[0]);
+}
+
+// ---------- Interaction ----------
 canvas.onmousedown = canvas.ontouchstart = e=>{
-  dragging=true;
-  const p=pos(e); sx=p.x; sy=p.y;
+  const p=getPos(e);
+  const {x,y,w,h}=crop;
+
+  if(hitCorner(p.x,p.y,x,y)) draggingCorner="tl";
+  else if(hitCorner(p.x,p.y,x+w,y)) draggingCorner="tr";
+  else if(hitCorner(p.x,p.y,x,y+h)) draggingCorner="bl";
+  else if(hitCorner(p.x,p.y,x+w,y+h)) draggingCorner="br";
 }
 
 canvas.onmousemove = canvas.ontouchmove = e=>{
-  if(!dragging) return;
-  const p=pos(e); ex=p.x; ey=p.y;
-  ctx.drawImage(img,0,0);
-  ctx.strokeStyle="red";
-  ctx.strokeRect(sx,sy,ex-sx,ey-sy);
+  if(!draggingCorner) return;
+  const p=getPos(e);
+
+  if(draggingCorner==="tl"){
+    crop.w+=crop.x-p.x; crop.h+=crop.y-p.y;
+    crop.x=p.x; crop.y=p.y;
+  }
+  if(draggingCorner==="tr"){
+    crop.w=p.x-crop.x; crop.h+=crop.y-p.y;
+    crop.y=p.y;
+  }
+  if(draggingCorner==="bl"){
+    crop.w+=crop.x-p.x;
+    crop.x=p.x; crop.h=p.y-crop.y;
+  }
+  if(draggingCorner==="br"){
+    crop.w=p.x-crop.x; crop.h=p.y-crop.y;
+  }
+  draw();
 }
 
-canvas.onmouseup = canvas.ontouchend = ()=> dragging=false;
+canvas.onmouseup = canvas.ontouchend = ()=> draggingCorner=null;
 
+// ---------- Save ----------
 document.getElementById('save').onclick=()=>{
-  if(!ex||!ey) return alert("ناحیه را انتخاب کنید");
-  const w=ex-sx,h=ey-sy;
   const t=document.createElement('canvas');
-  t.width=w;t.height=h;
-  t.getContext('2d').drawImage(canvas,sx,sy,w,h,0,0,w,h);
+  t.width=crop.w; t.height=crop.h;
+  t.getContext('2d').drawImage(
+    canvas,
+    crop.x,crop.y,crop.w,crop.h,
+    0,0,crop.w,crop.h
+  );
   const a=document.createElement('a');
   a.href=t.toDataURL('image/jpeg',quality.value);
-  a.download="image.jpg";a.click();
+  a.download="crop.jpg";
+  a.click();
 }
 </script>
 
