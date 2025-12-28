@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ویدئو موبایل</title>
+<style>
+body{font-family:tahoma;padding:15px}
+video,button{width:100%;margin-top:10px}
+</style>
+</head>
+<body>
+
+<h3>انتخاب و ذخیره ویدئو (موبایل)</h3>
+
+<input type="file" accept="video/*" id="videoInput">
+
+<video id="video" controls></video>
+
+<p style="color:#777">
+⚠️ فشرده‌سازی واقعی ویدئو در موبایل نیاز به سرور دارد
+</p>
+
+<script>
+const input=document.getElementById('videoInput');
+const video=document.getElementById('video');
+
+input.onchange=e=>{
+  video.src=URL.createObjectURL(e.target.files[0]);
+}
+</script>
+
+</body>
+</html>
