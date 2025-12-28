@@ -3,36 +3,57 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crop حرفه‌ای (Desktop + Mobile)</title>
+<title>Crop حرفه‌ای تصویر</title>
 
 <style>
-body{font-family:tahoma;background:#f5f5f5;padding:15px}
+body{
+  font-family:tahoma;
+  background:#f5f5f5;
+  padding:15px
+}
 canvas{
   max-width:100%;
   background:#fff;
   border:1px solid #ccc;
   touch-action:none;
 }
-.controls select,button{
+.controls{
+  margin:10px 0
+}
+.controls label{
+  display:block;
+  margin-top:8px;
+  font-size:14px
+}
+.controls input,
+.controls select,
+button{
   width:100%;
-  padding:10px;
-  margin-top:10px;
+  padding:8px;
+  margin-top:4px
 }
 </style>
 </head>
 <body>
 
-<h3>کراپ حرفه‌ای تصویر</h3>
+<h3>کراپ حرفه‌ای تصویر (Desktop + Mobile)</h3>
 
 <input type="file" id="fileInput" accept="image/*">
 
 <div class="controls">
+  <label>نسبت تصویر</label>
   <select id="ratio">
     <option value="free">آزاد</option>
     <option value="1">1:1</option>
     <option value="4/5">4:5</option>
     <option value="16/9">16:9</option>
   </select>
+
+  <label>اندازه نقطه‌چین</label>
+  <input type="range" id="dashSize" min="6" max="40" value="18">
+
+  <label>ضخامت خط</label>
+  <input type="range" id="lineWidth" min="2" max="8" value="4">
 </div>
 
 <canvas id="canvas"></canvas>
@@ -42,26 +63,75 @@ canvas{
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+
+const dashInput = document.getElementById('dashSize');
+const lineInput = document.getElementById('lineWidth');
 const ratioSelect = document.getElementById('ratio');
 
 const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
 let img = new Image();
 let crop = {};
-let mode = null; // tl,tr,bl,br,move
+let mode = null;
+let last = null;
 let ratio = null;
 
+// ---------- Load Image ----------
+fileInput.onchange = e => {
+  const r = new FileReader();
+  r.onload = ev => {
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      const w = img.width * 0.8;
+      const h = img.height * 0.8;
+      crop = {
+        x:(img.width-w)/2,
+        y:(img.height-h)/2,
+        w,h
+      };
+      draw();
+    }
+    img.src = ev.target.result;
+  }
+  r.readAsDataURL(e.target.files[0]);
+};
+
+// ---------- Ratio ----------
+ratioSelect.onchange = () => {
+  if(ratioSelect.value === "free"){
+    ratio = null;
+  }else{
+    const [a,b] = ratioSelect.value.split("/").map(Number);
+    ratio = a / b;
+  }
+};
+
 // ---------- Utils ----------
-function resizeCanvas(w,h){
-  canvas.width=w;
-  canvas.height=h;
+function pos(e){
+  const r = canvas.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  return {x:p.clientX - r.left, y:p.clientY - r.top};
+}
+
+function hit(p,x,y){
+  const r = isMobile ? 30 : 14;
+  return Math.hypot(p.x-x, p.y-y) < r;
+}
+
+function inside(p){
+  return (
+    p.x > crop.x && p.x < crop.x + crop.w &&
+    p.y > crop.y && p.y < crop.y + crop.h
+  );
 }
 
 function clamp(){
-  crop.x=Math.max(0,crop.x);
-  crop.y=Math.max(0,crop.y);
-  crop.w=Math.max(50,Math.min(crop.w,canvas.width-crop.x));
-  crop.h=Math.max(50,Math.min(crop.h,canvas.height-crop.y));
+  crop.w = Math.max(50, crop.w);
+  crop.h = Math.max(50, crop.h);
+  crop.x = Math.max(0, Math.min(crop.x, canvas.width - crop.w));
+  crop.y = Math.max(0, Math.min(crop.y, canvas.height - crop.h));
 }
 
 // ---------- Draw ----------
@@ -78,36 +148,39 @@ function draw(){
   ctx.fill("evenodd");
   ctx.restore();
 
+  const dash = parseInt(dashInput.value);
+  const lw = parseInt(lineInput.value);
+
   if(isMobile){
-    // ---- Mobile dashed simulation ----
     ctx.strokeStyle="#000";
-    ctx.lineWidth=5;
-    const dash=20;
-    for(let x=crop.x;x<crop.x+crop.w;x+=dash*2){
+    ctx.lineWidth=lw;
+
+    for(let x=crop.x; x<crop.x+crop.w; x+=dash*2){
       ctx.beginPath();
       ctx.moveTo(x,crop.y);
       ctx.lineTo(x+dash,crop.y);
       ctx.stroke();
+
       ctx.beginPath();
       ctx.moveTo(x,crop.y+crop.h);
       ctx.lineTo(x+dash,crop.y+crop.h);
       ctx.stroke();
     }
-    for(let y=crop.y;y<crop.y+crop.h;y+=dash*2){
+    for(let y=crop.y; y<crop.y+crop.h; y+=dash*2){
       ctx.beginPath();
       ctx.moveTo(crop.x,y);
       ctx.lineTo(crop.x,y+dash);
       ctx.stroke();
+
       ctx.beginPath();
       ctx.moveTo(crop.x+crop.w,y);
       ctx.lineTo(crop.x+crop.w,y+dash);
       ctx.stroke();
     }
   }else{
-    // ---- Desktop real dashed ----
     ctx.strokeStyle="red";
-    ctx.lineWidth=2;
-    ctx.setLineDash([8,6]);
+    ctx.lineWidth=lw;
+    ctx.setLineDash([dash, dash*0.7]);
     ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
     ctx.setLineDash([]);
   }
@@ -116,7 +189,7 @@ function draw(){
 }
 
 function drawHandles(){
-  const r=isMobile?18:10;
+  const r = isMobile ? 18 : 10;
   [[crop.x,crop.y],[crop.x+crop.w,crop.y],[crop.x,crop.y+crop.h],[crop.x+crop.w,crop.y+crop.h]]
   .forEach(p=>{
     ctx.beginPath();
@@ -128,31 +201,11 @@ function drawHandles(){
   });
 }
 
-// ---------- Hit ----------
-function hit(p,x,y){
-  const r=isMobile?28:12;
-  return Math.hypot(p.x-x,p.y-y)<r;
-}
-function inside(p){
-  return p.x>crop.x && p.x<crop.x+crop.w && p.y>crop.y && p.y<crop.y+crop.h;
-}
-function pos(e){
-  const r=canvas.getBoundingClientRect();
-  const p=e.touches?e.touches[0]:e;
-  return {x:p.clientX-r.left,y:p.clientY-r.top};
-}
-
-// ---------- Ratio ----------
-ratioSelect.onchange=()=>{
-  if(ratioSelect.value==="free"){ratio=null;return;}
-  const [a,b]=ratioSelect.value.split("/").map(Number);
-  ratio=a/b;
-};
-
-// ---------- Events ----------
+// ---------- Interaction ----------
 function start(e){
-  const p=pos(e);
-  const {x,y,w,h}=crop;
+  const p = pos(e);
+  const {x,y,w,h} = crop;
+
   if(hit(p,x,y)) mode="tl";
   else if(hit(p,x+w,y)) mode="tr";
   else if(hit(p,x,y+h)) mode="bl";
@@ -162,62 +215,50 @@ function start(e){
 
 function move(e){
   if(!mode) return;
-  const p=pos(e);
+  const p = pos(e);
 
   if(mode==="move"){
-    crop.x+=p.x-last.x;
-    crop.y+=p.y-last.y;
+    crop.x += p.x - last.x;
+    crop.y += p.y - last.y;
   }else{
-    if(mode==="br"){crop.w=p.x-crop.x;crop.h=p.y-crop.y;}
-    if(mode==="tr"){crop.w=p.x-crop.x;crop.h+=crop.y-p.y;crop.y=p.y;}
-    if(mode==="bl"){crop.w+=crop.x-p.x;crop.x=p.x;crop.h=p.y-crop.y;}
-    if(mode==="tl"){crop.w+=crop.x-p.x;crop.h+=crop.y-p.y;crop.x=p.x;crop.y=p.y;}
+    if(mode==="br"){crop.w=p.x-crop.x; crop.h=p.y-crop.y;}
+    if(mode==="tr"){crop.w=p.x-crop.x; crop.h+=crop.y-p.y; crop.y=p.y;}
+    if(mode==="bl"){crop.w+=crop.x-p.x; crop.x=p.x; crop.h=p.y-crop.y;}
+    if(mode==="tl"){crop.w+=crop.x-p.x; crop.h+=crop.y-p.y; crop.x=p.x; crop.y=p.y;}
 
-    if(ratio) crop.h=crop.w/ratio;
+    if(ratio) crop.h = crop.w / ratio;
   }
 
   clamp();
-  last=p;
+  last = p;
   draw();
 }
 
-function end(){mode=null;}
-
-let last=null;
+function end(){ mode=null; }
 
 // Desktop
-canvas.addEventListener('mousedown',e=>{if(isMobile)return;last=pos(e);start(e);});
-canvas.addEventListener('mousemove',e=>{if(isMobile)return;move(e);});
+canvas.addEventListener('mousedown',e=>{if(isMobile)return; last=pos(e); start(e);});
+canvas.addEventListener('mousemove',e=>{if(isMobile)return; move(e);});
 canvas.addEventListener('mouseup',end);
 
 // Mobile
-canvas.addEventListener('touchstart',e=>{if(!isMobile)return;e.preventDefault();last=pos(e);start(e);},{passive:false});
-canvas.addEventListener('touchmove',e=>{if(!isMobile)return;e.preventDefault();move(e);},{passive:false});
+canvas.addEventListener('touchstart',e=>{if(!isMobile)return; e.preventDefault(); last=pos(e); start(e);},{passive:false});
+canvas.addEventListener('touchmove',e=>{if(!isMobile)return; e.preventDefault(); move(e);},{passive:false});
 canvas.addEventListener('touchend',end);
 
-// ---------- Load ----------
-fileInput.onchange=e=>{
-  const r=new FileReader();
-  r.onload=ev=>{
-    img.onload=()=>{
-      resizeCanvas(img.width,img.height);
-      const w=img.width*0.8,h=img.height*0.8;
-      crop={x:(img.width-w)/2,y:(img.height-h)/2,w,h};
-      draw();
-    }
-    img.src=ev.target.result;
-  }
-  r.readAsDataURL(e.target.files[0]);
-};
-
 // ---------- Save ----------
-document.getElementById('save').onclick=()=>{
-  const t=document.createElement('canvas');
-  t.width=crop.w;t.height=crop.h;
-  t.getContext('2d').drawImage(canvas,crop.x,crop.y,crop.w,crop.h,0,0,crop.w,crop.h);
-  const a=document.createElement('a');
-  a.href=t.toDataURL('image/jpeg',0.9);
-  a.download="crop.jpg";
+document.getElementById('save').onclick = ()=>{
+  const t = document.createElement('canvas');
+  t.width = crop.w;
+  t.height = crop.h;
+  t.getContext('2d').drawImage(
+    canvas,
+    crop.x,crop.y,crop.w,crop.h,
+    0,0,crop.w,crop.h
+  );
+  const a = document.createElement('a');
+  a.href = t.toDataURL('image/jpeg',0.9);
+  a.download = "crop.jpg";
   a.click();
 };
 </script>
