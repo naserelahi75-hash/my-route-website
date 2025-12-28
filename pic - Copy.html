@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crop حرفه‌ای موبایل</title>
+<title>Crop حرفه‌ای iOS</title>
 
 <style>
 body{font-family:tahoma;background:#f5f5f5;padding:15px}
@@ -12,51 +12,51 @@ canvas{
   border:1px solid #ccc;
   touch-action:none;
 }
-input,button{
-  width:100%;
-  padding:10px;
-  margin-top:10px;
-}
+input,button{width:100%;padding:10px;margin-top:10px}
 </style>
 </head>
 <body>
 
-<h3>کراپ تصویر (خط‌چین پررنگ)</h3>
+<h3>کراپ تصویر (بهینه Safari)</h3>
 
 <input type="file" id="fileInput" accept="image/*">
-
 <canvas id="canvas"></canvas>
 
-<label>کیفیت خروجی</label>
-<input type="range" id="quality" min="0.3" max="1" step="0.1" value="0.9">
-
-<button id="save">ذخیره تصویر</button>
+<button id="save">ذخیره</button>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const fileInput = document.getElementById('fileInput');
-const quality = document.getElementById('quality');
 
 let img = new Image();
-let crop = {x:0,y:0,w:0,h:0};
-let draggingCorner = null;
+let crop = {};
+let dragging = null;
 
-// مناسب لمس
-const cornerSize = 26;
+// Retina Fix
+function resizeCanvas(w,h){
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
 
-// ---------- Draw ----------
+// Draw
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(img,0,0);
 
-  // کادر خط‌چین پررنگ
-  ctx.save();
-  ctx.strokeStyle="rgba(0,0,0,0.85)";
-  ctx.lineWidth=4;
-  ctx.setLineDash([14,10]);
+  // کادر ضخیم (بهتر از خط‌چین در iOS)
+  ctx.strokeStyle="rgba(0,0,0,0.9)";
+  ctx.lineWidth=5;
   ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
-  ctx.restore();
+
+  // inner stroke
+  ctx.strokeStyle="rgba(255,255,255,0.9)";
+  ctx.lineWidth=2;
+  ctx.strokeRect(crop.x+2,crop.y+2,crop.w-4,crop.h-4);
 
   drawCorner(crop.x,crop.y);
   drawCorner(crop.x+crop.w,crop.y);
@@ -69,92 +69,80 @@ function drawCorner(x,y){
   ctx.strokeStyle="#000";
   ctx.lineWidth=3;
   ctx.beginPath();
-  ctx.arc(x,y,cornerSize/2,0,Math.PI*2);
-  ctx.fill();
-  ctx.stroke();
+  ctx.arc(x,y,18,0,Math.PI*2);
+  ctx.fill();ctx.stroke();
 }
 
-function getPos(e){
+function pos(e){
+  e.preventDefault();
   const r=canvas.getBoundingClientRect();
   const t=e.touches?e.touches[0]:e;
   return {x:t.clientX-r.left,y:t.clientY-r.top};
 }
 
-function hit(x,y,cx,cy){
-  return Math.hypot(x-cx,y-cy) < cornerSize;
+function hit(p,cx,cy){
+  return Math.hypot(p.x-cx,p.y-cy)<28;
 }
 
-// ---------- Load Image ----------
+// Load
 fileInput.onchange=e=>{
-  const reader=new FileReader();
-  reader.onload=ev=>{
+  const r=new FileReader();
+  r.onload=ev=>{
     img.onload=()=>{
-      canvas.width=img.width;
-      canvas.height=img.height;
+      resizeCanvas(img.width,img.height);
 
-      // 🔥 کراپ پیش‌فرض = ۸۰٪ تصویر (وسط)
-      const w = img.width * 0.8;
-      const h = img.height * 0.8;
-      crop = {
-        x:(img.width-w)/2,
-        y:(img.height-h)/2,
-        w,h
-      };
+      const w=img.width*0.8,h=img.height*0.8;
+      crop={x:(img.width-w)/2,y:(img.height-h)/2,w,h};
       draw();
     }
     img.src=ev.target.result;
   }
-  reader.readAsDataURL(e.target.files[0]);
+  r.readAsDataURL(e.target.files[0]);
 }
 
-// ---------- Interaction ----------
-canvas.onmousedown = canvas.ontouchstart = e=>{
-  const p=getPos(e);
+// Touch Events (optimized)
+canvas.addEventListener('touchstart',e=>{
+  const p=pos(e);
   const {x,y,w,h}=crop;
+  if(hit(p,x,y)) dragging="tl";
+  else if(hit(p,x+w,y)) dragging="tr";
+  else if(hit(p,x,y+h)) dragging="bl";
+  else if(hit(p,x+w,y+h)) dragging="br";
+},{passive:false});
 
-  if(hit(p.x,p.y,x,y)) draggingCorner="tl";
-  else if(hit(p.x,p.y,x+w,y)) draggingCorner="tr";
-  else if(hit(p.x,p.y,x,y+h)) draggingCorner="bl";
-  else if(hit(p.x,p.y,x+w,y+h)) draggingCorner="br";
-}
-
-canvas.onmousemove = canvas.ontouchmove = e=>{
-  if(!draggingCorner) return;
-  const p=getPos(e);
-
-  if(draggingCorner==="tl"){
+canvas.addEventListener('touchmove',e=>{
+  if(!dragging) return;
+  const p=pos(e);
+  if(dragging==="tl"){
     crop.w+=crop.x-p.x; crop.h+=crop.y-p.y;
     crop.x=p.x; crop.y=p.y;
   }
-  if(draggingCorner==="tr"){
+  if(dragging==="tr"){
     crop.w=p.x-crop.x; crop.h+=crop.y-p.y;
     crop.y=p.y;
   }
-  if(draggingCorner==="bl"){
+  if(dragging==="bl"){
     crop.w+=crop.x-p.x;
     crop.x=p.x; crop.h=p.y-crop.y;
   }
-  if(draggingCorner==="br"){
+  if(dragging==="br"){
     crop.w=p.x-crop.x; crop.h=p.y-crop.y;
   }
-  draw();
-}
+  requestAnimationFrame(draw);
+},{passive:false});
 
-canvas.onmouseup = canvas.ontouchend = ()=> draggingCorner=null;
+canvas.addEventListener('touchend',()=>dragging=null);
 
-// ---------- Save ----------
+// Save
 document.getElementById('save').onclick=()=>{
   const t=document.createElement('canvas');
   t.width=crop.w; t.height=crop.h;
   t.getContext('2d').drawImage(
-    canvas,
-    crop.x,crop.y,crop.w,crop.h,
-    0,0,crop.w,crop.h
+    canvas,crop.x,crop.y,crop.w,crop.h,0,0,crop.w,crop.h
   );
   const a=document.createElement('a');
-  a.href=t.toDataURL('image/jpeg',quality.value);
-  a.download="crop.jpg";
-  a.click();
+  a.href=t.toDataURL('image/jpeg',0.9);
+  a.download="crop.jpg";a.click();
 }
 </script>
 
