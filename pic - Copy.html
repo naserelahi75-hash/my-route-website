@@ -3,17 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crop حرفه‌ای تصویر</title>
+<title>Crop حرفه‌ای موبایل</title>
 
 <style>
 body{font-family:tahoma;background:#f5f5f5;padding:15px}
-canvas{max-width:100%;border:1px solid #ccc;touch-action:none}
-input,button{width:100%;padding:10px;margin-top:10px}
+canvas{
+  max-width:100%;
+  border:1px solid #ccc;
+  touch-action:none;
+}
+input,button{
+  width:100%;
+  padding:10px;
+  margin-top:10px;
+}
 </style>
 </head>
 <body>
 
-<h3>کراپ تصویر (مثل فتوشاپ)</h3>
+<h3>کراپ تصویر (خط‌چین پررنگ)</h3>
 
 <input type="file" id="fileInput" accept="image/*">
 
@@ -33,22 +41,23 @@ const quality = document.getElementById('quality');
 let img = new Image();
 let crop = {x:0,y:0,w:0,h:0};
 let draggingCorner = null;
-const cornerSize = 20;
 
-// ---------- Utils ----------
+// مناسب لمس
+const cornerSize = 26;
+
+// ---------- Draw ----------
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(img,0,0);
 
-  // overlay
+  // کادر خط‌چین پررنگ
   ctx.save();
-  ctx.strokeStyle="red";
-  ctx.setLineDash([8,5]);
-  ctx.lineWidth=2;
+  ctx.strokeStyle="rgba(0,0,0,0.85)";
+  ctx.lineWidth=4;
+  ctx.setLineDash([14,10]);
   ctx.strokeRect(crop.x,crop.y,crop.w,crop.h);
   ctx.restore();
 
-  // corners
   drawCorner(crop.x,crop.y);
   drawCorner(crop.x+crop.w,crop.y);
   drawCorner(crop.x,crop.y+crop.h);
@@ -58,10 +67,11 @@ function draw(){
 function drawCorner(x,y){
   ctx.fillStyle="#fff";
   ctx.strokeStyle="#000";
-  ctx.lineWidth=2;
+  ctx.lineWidth=3;
   ctx.beginPath();
-  ctx.rect(x-cornerSize/2,y-cornerSize/2,cornerSize,cornerSize);
-  ctx.fill();ctx.stroke();
+  ctx.arc(x,y,cornerSize/2,0,Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
 }
 
 function getPos(e){
@@ -70,8 +80,8 @@ function getPos(e){
   return {x:t.clientX-r.left,y:t.clientY-r.top};
 }
 
-function hitCorner(x,y,cx,cy){
-  return Math.abs(x-cx)<cornerSize && Math.abs(y-cy)<cornerSize;
+function hit(x,y,cx,cy){
+  return Math.hypot(x-cx,y-cy) < cornerSize;
 }
 
 // ---------- Load Image ----------
@@ -81,7 +91,15 @@ fileInput.onchange=e=>{
     img.onload=()=>{
       canvas.width=img.width;
       canvas.height=img.height;
-      crop={x:0,y:0,w:img.width,h:img.height}; // default full
+
+      // 🔥 کراپ پیش‌فرض = ۸۰٪ تصویر (وسط)
+      const w = img.width * 0.8;
+      const h = img.height * 0.8;
+      crop = {
+        x:(img.width-w)/2,
+        y:(img.height-h)/2,
+        w,h
+      };
       draw();
     }
     img.src=ev.target.result;
@@ -94,10 +112,10 @@ canvas.onmousedown = canvas.ontouchstart = e=>{
   const p=getPos(e);
   const {x,y,w,h}=crop;
 
-  if(hitCorner(p.x,p.y,x,y)) draggingCorner="tl";
-  else if(hitCorner(p.x,p.y,x+w,y)) draggingCorner="tr";
-  else if(hitCorner(p.x,p.y,x,y+h)) draggingCorner="bl";
-  else if(hitCorner(p.x,p.y,x+w,y+h)) draggingCorner="br";
+  if(hit(p.x,p.y,x,y)) draggingCorner="tl";
+  else if(hit(p.x,p.y,x+w,y)) draggingCorner="tr";
+  else if(hit(p.x,p.y,x,y+h)) draggingCorner="bl";
+  else if(hit(p.x,p.y,x+w,y+h)) draggingCorner="br";
 }
 
 canvas.onmousemove = canvas.ontouchmove = e=>{
