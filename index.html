@@ -58,6 +58,8 @@ td.bad {
 
 <input type="file" id="fileInput" />
 <button onclick="exportExcel()">خروجی اکسل</button>
+<button onclick="loadSample()">نمایش نمونه</button>
+<button onclick="downloadTemplate()">دانلود فایل نمونه اکسل</button>
 
 <div id="message"></div>
 <div id="budget"></div>
@@ -141,31 +143,7 @@ document.getElementById("fileInput").addEventListener("change", function(e) {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
       const headers = XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || [];
-
-      if (rows.length === 0) {
-        showMessage('<div class="error">فایل خالی است یا ردیف داده ندارد.</div>');
-        return;
-      }
-
-      const { map, missing } = findHeaders(headers);
-      if (missing.length > 0) {
-        showMessage(
-          '<div class="error">این ستون‌ها در فایل پیدا نشد:<ul>' +
-          missing.map(m => "<li>" + escapeHtml(m) + "</li>").join("") +
-          "</ul>ستون‌های موجود در فایل: " +
-          headers.map(escapeHtml).join("، ") + "</div>"
-        );
-        return;
-      }
-
-      const errors = calculate(rows, map);
-      renderTable(finalData, errors);
-      if (errors.length > 0) {
-        showMessage(
-          '<div class="warning">' + errors.length +
-          " خانه عدد معتبر نبود و صفر حساب شد (در جدول قرمز شده‌اند).</div>"
-        );
-      }
+      processRows(rows, headers);
     } catch (err) {
       showMessage('<div class="error">خواندن فایل ممکن نشد. لطفاً یک فایل اکسل معتبر انتخاب کنید.</div>');
     }
@@ -175,6 +153,57 @@ document.getElementById("fileInput").addEventListener("change", function(e) {
   // Allow selecting the same file again after editing it
   e.target.value = "";
 });
+
+function processRows(rows, headers) {
+  if (rows.length === 0) {
+    showMessage('<div class="error">فایل خالی است یا ردیف داده ندارد.</div>');
+    return;
+  }
+
+  const { map, missing } = findHeaders(headers);
+  if (missing.length > 0) {
+    showMessage(
+      '<div class="error">این ستون‌ها در فایل پیدا نشد:<ul>' +
+      missing.map(m => "<li>" + escapeHtml(m) + "</li>").join("") +
+      "</ul>ستون‌های موجود در فایل: " +
+      headers.map(escapeHtml).join("، ") + "</div>"
+    );
+    return;
+  }
+
+  const errors = calculate(rows, map);
+  renderTable(finalData, errors);
+  if (errors.length > 0) {
+    showMessage(
+      '<div class="warning">' + errors.length +
+      " خانه عدد معتبر نبود و صفر حساب شد (در جدول قرمز شده‌اند).</div>"
+    );
+  }
+}
+
+const SAMPLE_ROWS = [
+  ["نام", ...Object.values(COLUMNS)],
+  ["علی رضایی", 30000000, 30, 1, 10, 5, 200000],
+  ["مریم احمدی", 24000000, 26, 1.2, 0, 8, 150000],
+  ["حسین کریمی", 18000000, 22, 0.9, 12, 12, 150000],
+  ["زهرا محمدی", "۲۷٬۰۰۰٬۰۰۰", "۳۰", "۱", "۴", "۰", "۲۰۰۰۰۰"]
+];
+
+function loadSample() {
+  reset();
+  const headers = SAMPLE_ROWS[0];
+  const rows = SAMPLE_ROWS.slice(1).map(r =>
+    Object.fromEntries(headers.map((h, i) => [h, r[i]]))
+  );
+  processRows(rows, headers);
+}
+
+function downloadTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet(SAMPLE_ROWS);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  XLSX.writeFile(wb, "نمونه_بهره_وری.xlsx");
+}
 
 function calculate(rows, map) {
   let totalBudget = 0;
