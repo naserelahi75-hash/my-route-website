@@ -2,8 +2,9 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>محاسبه بهره‌وری</title>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 body {
   font-family: Tahoma;
@@ -23,6 +24,25 @@ th, td {
 th {
   background: #f2f2f2;
 }
+td.bad {
+  background: #fdd;
+}
+#table {
+  overflow-x: auto;
+}
+.error, .warning {
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 4px;
+}
+.error {
+  background: #fdecea;
+  color: #b71c1c;
+}
+.warning {
+  background: #fff8e1;
+  color: #8a6d00;
+}
 #budget {
   margin-top: 15px;
   font-size: 18px;
@@ -39,76 +59,176 @@ th {
 <input type="file" id="fileInput" />
 <button onclick="exportExcel()">خروجی اکسل</button>
 
+<div id="message"></div>
 <div id="budget"></div>
 <div id="table"></div>
 
 <script>
 let finalData = [];
 
+const COLUMNS = {
+  prevProductivity: "بهره‌وری ماه قبل",
+  workDays: "تعداد روز کاری ماه جاری",
+  factor: "ضریب بهره‌وری",
+  otPrev: "اضافه کاری ماه قبل",
+  otCurrent: "اضافه کاری ماه جاری",
+  rate: "نرخ محاسبه"
+};
+const RESULT_COLUMN = "محاسبه بهره‌وری ماه جدید";
+
+// Ignore spaces, half-spaces and Arabic/Persian letter variants in header names
+function normalizeKey(k) {
+  return String(k)
+    .replace(/ي/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\s‌‍‎‏]/g, "");
+}
+
+function findHeaders(headers) {
+  const map = {};
+  const missing = [];
+  Object.entries(COLUMNS).forEach(([key, title]) => {
+    const found = headers.find(h => normalizeKey(h) === normalizeKey(title));
+    if (found === undefined) missing.push(title);
+    else map[key] = found;
+  });
+  return { map, missing };
+}
+
+// Returns null for values that are not numbers
 function toNumber(v) {
   if (v === undefined || v === null || v === "") return 0;
-  return Number(String(v).replace(/,/g, ""));
+  if (typeof v === "number") return v;
+  const s = String(v)
+    .replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x06F0)
+    .replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x0660)
+    .replace(/[,٬\s]/g, "")
+    .replace(/٫/g, ".");
+  if (s === "") return 0;
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+
+function escapeHtml(v) {
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function showMessage(html) {
+  document.getElementById("message").innerHTML = html;
+}
+
+function reset() {
+  finalData = [];
+  document.getElementById("budget").innerText = "";
+  document.getElementById("table").innerHTML = "";
+  showMessage("");
 }
 
 document.getElementById("fileInput").addEventListener("change", function(e) {
   const file = e.target.files[0];
+  reset();
+  if (!file) return;
   const reader = new FileReader();
 
   reader.onload = function(evt) {
-    const data = new Uint8Array(evt.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet);
+    try {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      const headers = XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] || [];
 
-    calculate(rows);
-    renderTable(finalData);
+      if (rows.length === 0) {
+        showMessage('<div class="error">فایل خالی است یا ردیف داده ندارد.</div>');
+        return;
+      }
+
+      const { map, missing } = findHeaders(headers);
+      if (missing.length > 0) {
+        showMessage(
+          '<div class="error">این ستون‌ها در فایل پیدا نشد:<ul>' +
+          missing.map(m => "<li>" + escapeHtml(m) + "</li>").join("") +
+          "</ul>ستون‌های موجود در فایل: " +
+          headers.map(escapeHtml).join("، ") + "</div>"
+        );
+        return;
+      }
+
+      const errors = calculate(rows, map);
+      renderTable(finalData, errors);
+      if (errors.length > 0) {
+        showMessage(
+          '<div class="warning">' + errors.length +
+          " خانه عدد معتبر نبود و صفر حساب شد (در جدول قرمز شده‌اند).</div>"
+        );
+      }
+    } catch (err) {
+      showMessage('<div class="error">خواندن فایل ممکن نشد. لطفاً یک فایل اکسل معتبر انتخاب کنید.</div>');
+    }
   };
 
   reader.readAsArrayBuffer(file);
+  // Allow selecting the same file again after editing it
+  e.target.value = "";
 });
 
-function calculate(rows) {
+function calculate(rows, map) {
   let totalBudget = 0;
+  const errors = [];
   finalData = [];
 
-  rows.forEach(r => {
-    const prevProductivity = toNumber(r["بهره‌وری ماه قبل"]);
-    const workDays = toNumber(r["تعداد روز کاری ماه جاری"]);
-    const factor = toNumber(r["ضریب بهره‌وری"]);
-    const otPrev = toNumber(r["اضافه کاری ماه قبل"]);
-    const otCurrent = toNumber(r["اضافه کاری ماه جاری"]);
-    const rate = toNumber(r["نرخ محاسبه"]);
+  rows.forEach((r, i) => {
+    const v = {};
+    Object.keys(COLUMNS).forEach(key => {
+      const n = toNumber(r[map[key]]);
+      if (n === null) {
+        errors.push({ row: i, column: map[key] });
+        v[key] = 0;
+      } else {
+        v[key] = n;
+      }
+    });
 
     const base =
-      (prevProductivity / 30) * workDays * factor;
+      (v.prevProductivity / 30) * v.workDays * v.factor;
 
     const otEffect =
-      (otPrev - otCurrent) * rate;
+      (v.otPrev - v.otCurrent) * v.rate;
 
     const finalValue = Math.round(base + otEffect);
 
-    r["محاسبه بهره‌وری ماه جدید"] = finalValue;
+    r[RESULT_COLUMN] = finalValue;
     totalBudget += finalValue;
     finalData.push(r);
   });
 
   document.getElementById("budget").innerText =
-    "جمع کل بودجه بهره‌وری: " + totalBudget.toLocaleString();
+    "جمع کل بودجه بهره‌وری: " + totalBudget.toLocaleString() +
+    " (" + rows.length.toLocaleString() + " نفر)";
+  return errors;
 }
 
-function renderTable(data) {
+function renderTable(data, errors) {
   if (data.length === 0) return;
+
+  const bad = new Set(errors.map(e => e.row + "|" + e.column));
 
   let html = "<table><tr>";
   Object.keys(data[0]).forEach(k => {
-    html += "<th>" + k + "</th>";
+    html += "<th>" + escapeHtml(k) + "</th>";
   });
   html += "</tr>";
 
-  data.forEach(r => {
+  data.forEach((r, i) => {
     html += "<tr>";
-    Object.values(r).forEach(v => {
-      html += "<td>" + (v ?? "") + "</td>";
+    Object.entries(r).forEach(([k, v]) => {
+      const cls = bad.has(i + "|" + k) ? ' class="bad"' : "";
+      const text = typeof v === "number" ? v.toLocaleString() : escapeHtml(v ?? "");
+      html += "<td" + cls + ">" + text + "</td>";
     });
     html += "</tr>";
   });
